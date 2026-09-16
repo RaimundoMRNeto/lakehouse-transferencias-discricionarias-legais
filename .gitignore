@@ -9,6 +9,7 @@ airflow/logs/*
 dbt_lakehouse/target/
 dbt_lakehouse/dbt_packages/
 dbt_lakehouse/logs/
+dbt_lakehouse/.user.yml
 
 # Banco local do Superset
 superset/superset.db
