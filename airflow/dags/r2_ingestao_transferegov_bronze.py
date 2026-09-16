@@ -24,14 +24,17 @@ FORCE_FLAG_TEMPLATE = "{% if params.force %}--force{% endif %}"
 
 def decide_branch(**context):
     """
-    Avalia o status da etapa de controle inicial gravado no arquivo de estado.
+    Avalia a decisão da etapa de controle inicial persistida no arquivo de estado da execução.
     Se a execução for classificada como NO_CHANGE, segue para finalizar_no_change;
-    caso contrário, segue para o pipeline de ingestão.
+    caso contrário, segue para o pipeline de ingestão sequencial dos datasets analíticos.
     """
     run_id = f"run_{context['ts_nodash']}"
-    status_file = f"/data/staging/{run_id}_status.txt"
-    if os.path.exists(status_file):
-        with open(status_file, "r", encoding="utf-8") as f:
+    decision_file = f"/data/staging/{run_id}/decision.txt"
+    legacy_file = f"/data/staging/{run_id}_status.txt"
+    target_file = decision_file if os.path.exists(decision_file) else legacy_file
+
+    if os.path.exists(target_file):
+        with open(target_file, "r", encoding="utf-8") as f:
             content = f.read().strip()
         if content == "STATUS_NO_CHANGE":
             return "finalizar_no_change"
@@ -68,8 +71,7 @@ with DAG(
 
     avaliar_necessidade = BranchPythonOperator(
         task_id="avaliar_necessidade",
-        python_callable=decide_branch,
-        provide_context=True
+        python_callable=decide_branch
     )
 
     finalizar_no_change = BashOperator(

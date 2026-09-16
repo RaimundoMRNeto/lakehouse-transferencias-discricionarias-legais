@@ -34,6 +34,74 @@ def parse_data_carga(raw_text: str, expected_format: str = "%d/%m/%Y %H:%M:%S") 
     # Retorna o texto original limpo e o datetime parseado
     return cleaned, dt
 
+def validate_and_parse_control_csv(
+    csv_path: str,
+    expected_column: str = "data_carga",
+    delimiter: str = ";",
+    encoding: str = "utf-8-sig",
+    date_format: str = "%d/%m/%Y %H:%M:%S"
+) -> Tuple[str, datetime]:
+    """
+    Valida estritamente o contrato do CSV de controle:
+    - Exatamente 1 coluna com nome idêntico a expected_column (sem colunas extras, ausentes ou duplicadas).
+    - Exatamente 1 registro de dados (rejeita zero linhas e rejeita duas ou mais linhas).
+    - Registro com largura estritamente compatível (1 valor).
+    - Data calendarizável no formato especificado.
+    - Encoding estrito.
+    """
+    with open(csv_path, mode="r", encoding=encoding, errors="strict", newline="") as f:
+        reader = csv.reader(f, delimiter=delimiter)
+        try:
+            header = next(reader)
+        except StopIteration:
+            raise ValueError(f"CSV de controle {csv_path} está vazio (zero linhas).")
+
+        header_cols = [c.strip().lstrip("\ufeff") for c in header]
+
+        if len(header_cols) == 0 or (len(header_cols) == 1 and not header_cols[0]):
+            raise ValueError(f"Cabeçalho do CSV de controle {csv_path} está vazio.")
+
+        if len(header_cols) > 1:
+            if header_cols.count(expected_column) > 1:
+                raise ValueError(
+                    f"Cabeçalho do controle contém colunas duplicadas: {header_cols}"
+                )
+            if expected_column in header_cols:
+                raise ValueError(
+                    f"Cabeçalho do controle contém coluna adicional inesperada: {header_cols}"
+                )
+            raise ValueError(
+                f"Coluna esperada '{expected_column}' ausente no cabeçalho do controle: {header_cols}"
+            )
+
+        if header_cols[0] != expected_column:
+            raise ValueError(
+                f"Coluna esperada '{expected_column}' ausente no cabeçalho do controle (encontrada: '{header_cols[0]}')."
+            )
+
+        try:
+            row = next(reader)
+        except StopIteration:
+            raise ValueError(f"CSV de controle {csv_path} não contém linhas de dados (zero registros).")
+
+        if len(row) != 1:
+            raise ValueError(
+                f"Registro de controle possui largura incompatível: esperada 1 coluna, encontrada {len(row)} colunas ({row})."
+            )
+
+        raw_val = row[0]
+        raw_text, parsed_dt = parse_data_carga(raw_val, date_format)
+
+        try:
+            extra_row = next(reader)
+            raise ValueError(
+                f"CSV de controle {csv_path} contém duas ou mais linhas de dados (esperado apenas 1 registro). Linha excedente: {extra_row}"
+            )
+        except StopIteration:
+            pass
+
+    return raw_text, parsed_dt
+
 def fetch_and_validate_control(
     config: AppConfig,
     run_id: str,
@@ -42,7 +110,7 @@ def fetch_and_validate_control(
     """
     Baixa o arquivo oficial de controle data_carga_siconv.zip, armazena o ZIP original
     em s3://bronze/raw/transferegov/data_carga_siconv/sha256=<hash>/..., extrai o CSV
-    e parseia o marcador oficial data_carga.
+    e parseia o marcador oficial data_carga com validação estrita de contrato.
     """
     ctrl_cfg = config.control
     control_url = config.base_url + ctrl_cfg.zip_file
@@ -72,29 +140,14 @@ def fetch_and_validate_control(
         target_dir=staging_dir
     )
 
-    # Leitura e parsing do CSV
-    with open(csv_path, mode="r", encoding=ctrl_cfg.encoding, errors="strict", newline="") as f:
-        reader = csv.reader(f, delimiter=ctrl_cfg.delimiter)
-        try:
-            header = next(reader)
-        except StopIteration:
-            raise ValueError(f"CSV de controle {csv_path} está vazio.")
-
-        header_cols = [c.strip() for c in header]
-        if ctrl_cfg.expected_column not in header_cols:
-            raise ValueError(
-                f"Coluna esperada '{ctrl_cfg.expected_column}' ausente no cabeçalho do controle: {header_cols}"
-            )
-
-        col_idx = header_cols.index(ctrl_cfg.expected_column)
-
-        try:
-            row = next(reader)
-        except StopIteration:
-            raise ValueError(f"CSV de controle {csv_path} não contém linhas de dados.")
-
-        raw_val = row[col_idx]
-        raw_text, parsed_dt = parse_data_carga(raw_val, ctrl_cfg.date_format)
+    # Leitura e validação estrita do CSV de controle
+    raw_text, parsed_dt = validate_and_parse_control_csv(
+        csv_path=csv_path,
+        expected_column=ctrl_cfg.expected_column,
+        delimiter=ctrl_cfg.delimiter,
+        encoding=ctrl_cfg.encoding,
+        date_format=ctrl_cfg.date_format
+    )
 
     logger.info(
         f"Controle data_carga validado com sucesso: raw='{raw_text}', "

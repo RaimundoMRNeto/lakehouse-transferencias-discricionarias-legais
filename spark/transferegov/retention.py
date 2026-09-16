@@ -17,10 +17,60 @@ from transferegov.audit import AuditManager
 
 logger = logging.getLogger(__name__)
 
+def plan_dataset_retention(
+    dataset_id: str,
+    successful_manifests: List[Dict[str, Any]],
+    physical_keys: List[str],
+    raw_versions_to_keep: int = 2
+) -> Dict[str, Any]:
+    """
+    Função pura que calcula o plano de retenção para um dataset:
+    - Identifica até `raw_versions_to_keep` hashes distintos mais recentes ativados com sucesso via manifesto.
+    - Chaves físicas pertencentes a esses hashes (ou registradas no manifesto desses hashes) são PROTEGIDAS.
+    - Chaves físicas de versões mais antigas, pertencentes apenas a execuções FAILED,
+      ou sem hash reconhecível são classificadas como CANDIDATAS À EXCLUSÃO.
+    """
+    distinct_successful_hashes: List[str] = []
+    protected_manifest_keys: Set[str] = set()
+
+    for row in successful_manifests:
+        sha = row.get("source_sha256")
+        key = row.get("raw_s3_key")
+        if sha and sha not in distinct_successful_hashes:
+            distinct_successful_hashes.append(sha)
+        if sha in distinct_successful_hashes[:raw_versions_to_keep]:
+            if key:
+                protected_manifest_keys.add(key)
+
+    protected_hashes = distinct_successful_hashes[:raw_versions_to_keep]
+
+    protected_keys: List[str] = []
+    deletion_candidates: List[str] = []
+
+    for key in physical_keys:
+        match = re.search(r"sha256=([a-fA-F0-9]+)", key)
+        obj_sha = match.group(1) if match else None
+
+        if obj_sha and obj_sha in protected_hashes:
+            protected_keys.append(key)
+        elif key in protected_manifest_keys:
+            protected_keys.append(key)
+        else:
+            deletion_candidates.append(key)
+
+    return {
+        "dataset_id": dataset_id,
+        "distinct_successful_hashes": distinct_successful_hashes,
+        "protected_hashes": protected_hashes,
+        "protected_keys": protected_keys,
+        "deletion_candidates": deletion_candidates
+    }
+
 def calculate_retention_plan(
     spark: SparkSession,
     s3_mgr: S3StorageManager,
-    config: AppConfig
+    config: AppConfig,
+    warehouse_prefix: str = None
 ) -> Dict[str, Any]:
     """
     Calcula o plano de retenção por dataset:
@@ -28,14 +78,18 @@ def calculate_retention_plan(
     - Mapeia os objetos físicos existentes no MinIO/S3.
     - Classifica cada chave como PROTEGIDA ou CANDIDATA À EXCLUSÃO.
     """
-    manifest_path = f"{config.storage.warehouse_prefix}/ingestion_manifest"
-    runs_path = f"{config.storage.warehouse_prefix}/ingestion_runs"
+    wh_prefix = warehouse_prefix or config.storage.warehouse_prefix
+    if not wh_prefix.startswith("s3a://"):
+        wh_prefix = f"s3a://bronze/{wh_prefix.lstrip('/')}"
+
+    runs_path = f"{wh_prefix}/ingestion_runs"
+    manifest_path = f"{wh_prefix}/ingestion_manifest"
 
     # Identificar execuções de sucesso
-    runs_df = spark.read.format("delta").load(f"s3a://bronze/{runs_path}").filter(F.col("status") == "SUCCESS")
+    runs_df = spark.read.format("delta").load(runs_path).filter(F.col("status") == "SUCCESS")
     successful_run_ids = [r["ingestion_run_id"] for r in runs_df.select("ingestion_run_id").collect()]
 
-    manifest_df = spark.read.format("delta").load(f"s3a://bronze/{manifest_path}").filter(
+    manifest_df = spark.read.format("delta").load(manifest_path).filter(
         (F.col("status") == "SUCCESS") & (F.col("ingestion_run_id").isin(successful_run_ids))
     )
 
@@ -50,48 +104,32 @@ def calculate_retention_plan(
         ds_manifests = (
             manifest_df.filter(F.col("dataset_id") == ds_id)
             .orderBy(F.col("ingested_at_utc").desc())
-            .select("source_sha256", "raw_s3_key")
+            .select("source_sha256", "raw_s3_key", "ingested_at_utc")
             .collect()
         )
-
-        # Encontrar até 2 hashes distintos mais recentes ativados com sucesso
-        distinct_successful_hashes: List[str] = []
-        protected_ds_keys: Set[str] = set()
-
-        for row in ds_manifests:
-            sha = row["source_sha256"]
-            if sha and sha not in distinct_successful_hashes:
-                distinct_successful_hashes.append(sha)
-            if sha in distinct_successful_hashes[:config.raw_versions_per_dataset]:
-                if row["raw_s3_key"]:
-                    protected_ds_keys.add(row["raw_s3_key"])
+        manifest_dicts = [
+            {
+                "source_sha256": row["source_sha256"],
+                "raw_s3_key": row["raw_s3_key"],
+                "ingested_at_utc": row["ingested_at_utc"]
+            }
+            for row in ds_manifests
+        ]
 
         # Listar objetos existentes no storage físico
         physical_objects = s3_mgr.list_dataset_raw_objects(ds_id)
-        ds_candidates: List[str] = []
+        physical_keys = [obj["key"] for obj in physical_objects]
 
-        for obj in physical_objects:
-            key = obj["key"]
-            # Extrair sha256 da chave: raw/transferegov/<dataset>/sha256=<hash>/<arquivo>
-            match = re.search(r"sha256=([a-fA-F0-9]+)", key)
-            obj_sha = match.group(1) if match else None
+        ds_plan = plan_dataset_retention(
+            dataset_id=ds_id,
+            successful_manifests=manifest_dicts,
+            physical_keys=physical_keys,
+            raw_versions_to_keep=config.raw_versions_per_dataset
+        )
 
-            # Protegido se pertencer a um dos hashes protegidos
-            if obj_sha and obj_sha in distinct_successful_hashes[:config.raw_versions_per_dataset]:
-                protected_keys.append(key)
-            elif key in protected_ds_keys:
-                protected_keys.append(key)
-            else:
-                # Fora das versões protegidas -> candidato à remoção
-                deletion_candidates.append(key)
-                ds_candidates.append(key)
-
-        details[ds_id] = {
-            "distinct_successful_hashes": distinct_successful_hashes,
-            "protected_hashes": distinct_successful_hashes[:config.raw_versions_per_dataset],
-            "protected_keys_count": len([k for k in protected_keys if f"/{ds_id}/" in k]),
-            "deletion_candidates": ds_candidates
-        }
+        protected_keys.extend(ds_plan["protected_keys"])
+        deletion_candidates.extend(ds_plan["deletion_candidates"])
+        details[ds_id] = ds_plan
 
     return {
         "protected_keys": protected_keys,

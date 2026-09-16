@@ -90,24 +90,38 @@ Apenas quatro colunas técnicas são adicionadas à representação tabular:
 ### 3.4. Auditoria Persistente
 Duas tabelas Delta governadas no schema `bronze` e consultáveis via Spark Thrift Server:
 - `bronze.ingestion_runs`: Histórico por execução (`run_id`, início/fim UTC, status, `force`, data_carga inicial/final, totais e status da retenção).
-- `bronze.ingestion_manifest`: Histórico detalhado por dataset (`run_id`, `dataset_id`, URLs, hashes, tamanhos, colunas, contagens reconciliadas, caminhos RAW/Delta, versão Delta e status).
+- `bronze.ingestion_manifest`: Histórico detalhado por dataset (`run_id`, `dataset_id`, URLs, hashes, tamanhos, colunas, contagens reconciliadas, caminhos RAW/Delta, versão Delta e status). O arquivo de controle `data_carga_siconv` também é formalmente ativado nesta tabela após a validação global com status `SUCCESS`.
 
-### 3.5. Política de Retenção RAW (Atual + Anterior = 2 Versões)
-- Mantém por dataset a revisão ativa atual e a revisão distinta imediatamente anterior ativada com sucesso.
+### 3.5. Consistência Temporal e Contrato de Controle
+- O arquivo `data_carga_siconv.csv` obedece a contrato estrito: exatamente 1 coluna (`data_carga`), exatamente 1 registro, formato `%d/%m/%Y %H:%M:%S` calendarizável e codificação estrita.
+- As etapas `control_initial` e `control_final` gravam arquivos de evidência (`control_initial.json` e `control_final.json`) e decisão (`decision.txt`) sob `/data/staging/<run_id>/`.
+- A validação global compara o controle obtido antes dos datasets contra o controle obtido após os datasets sem re-downloads, reprovando execuções onde a fonte tenha mudado durante o processo.
+
+### 3.6. Política de Retenção RAW (Atual + Anterior = 2 Versões)
+- Mantém por dataset (analíticos e controle `data_carga_siconv`) a revisão ativa atual e a revisão distinta imediatamente anterior ativada com sucesso via manifesto.
+- Algoritmo implementado na função pura `plan_dataset_retention()`.
 - Reexecuções do mesmo conteúdo não contam como nova versão.
 - Não executa em cargas parciais ou com falha.
 - Exclusão restrita a chaves exatas confirmadas no MinIO, com atualização correspondente no manifesto.
 
 ---
 
-## 4. Orquestração e Operação
+## 4. Integração Contínua (CI)
 
-### 4.1. DAG do Airflow
+O repositório possui workflow GitHub Actions em `.github/workflows/ci.yml` configurado para `push` e `pull_request` (branches `main` e `feat/**`).
+- Verificação de formatação e quebras de linha (`git diff --check`).
+- Compilação de sintaxe e bytecode Python (`python -m compileall spark airflow/dags`).
+- Validação estrutural do arquivo YAML de configuração de fontes (`spark/transferegov_sources.yml`).
+- Execução isolada de 40 testes unitários que independem de cluster Spark/MinIO (`test_control.py`, `test_csv_processor.py`, `test_download_and_s3.py`, `test_retention.py`).
+
+## 5. Orquestração e Operação
+
+### 5.1. DAG do Airflow
 - **DAG ID:** `r2_ingestao_transferegov_bronze`
 - **Agendamento:** Manual (`schedule=None`, `catchup=False`, `max_active_runs=1`).
 - **Parâmetro:** `force` (booleano, padrão `False`).
 
-### 4.2. Execução via Linha de Comando (CLI)
+### 5.2. Execução via Linha de Comando (CLI)
 Dentro do container `airflow`:
 
 ```bash

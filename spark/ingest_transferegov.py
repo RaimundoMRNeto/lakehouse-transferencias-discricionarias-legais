@@ -6,6 +6,7 @@ import os
 import sys
 import uuid
 import time
+import json
 import shutil
 import argparse
 import logging
@@ -107,6 +108,17 @@ def run_control_initial(config: AppConfig, run_id: str, force: bool) -> Dict[str
     )
 
     logger.info(f"[{run_id}] Avaliação de necessidade de carga: is_no_change={is_no_change} ({reason})")
+
+    # Persistir explicitamente a evidência de controle inicial e decisão na árvore do run
+    run_staging = os.path.join(config.storage.local_staging_dir, run_id)
+    os.makedirs(run_staging, exist_ok=True)
+    initial_file = os.path.join(run_staging, "control_initial.json")
+    with open(initial_file, "w", encoding="utf-8") as f:
+        json.dump(control_info, f, ensure_ascii=False, indent=2)
+
+    decision_file = os.path.join(run_staging, "decision.txt")
+    with open(decision_file, "w", encoding="utf-8") as f:
+        f.write("STATUS_NO_CHANGE" if is_no_change else "STATUS_CONTINUE")
 
     if is_no_change:
         # Registrar finalização NO_CHANGE
@@ -319,23 +331,54 @@ def run_control_final(config: AppConfig, run_id: str) -> Dict[str, Any]:
     logger.info(f"[{run_id}] Executando controle final de consistência...")
     s3_mgr = S3StorageManager(config.storage)
     control_final = fetch_and_validate_control(config, f"{run_id}_final", s3_mgr)
+
+    # Persistir explicitamente a evidência de controle final na árvore temporária do run
+    run_staging = os.path.join(config.storage.local_staging_dir, run_id)
+    os.makedirs(run_staging, exist_ok=True)
+    final_file = os.path.join(run_staging, "control_final.json")
+    with open(final_file, "w", encoding="utf-8") as f:
+        json.dump(control_final, f, ensure_ascii=False, indent=2)
+
     return control_final
 
 def run_validate_global(
     config: AppConfig,
     run_id: str,
-    control_initial_info: Dict[str, Any],
-    control_final_info: Dict[str, Any]
+    control_initial_info: Optional[Dict[str, Any]] = None,
+    control_final_info: Optional[Dict[str, Any]] = None,
+    audit_mgr: Optional[AuditManager] = None
 ) -> bool:
     """
     Valida a integridade global da carga:
-    - Confirma se todos os 4 datasets obtiveram status SUCCESS no manifesto
-    - Compara data_carga inicial e final para detectar inconsistências durante a operação
-    - Atualiza bronze.ingestion_runs para SUCCESS
+    - Consome as evidências de controle inicial e final coletadas antes e depois dos datasets.
+    - Confirma se todos os 4 datasets analíticos obtiveram status SUCCESS no manifesto.
+    - Compara data_carga inicial e final (source_data_carga_raw) para detectar inconsistências.
+    - Registra formalmente a revisão ativada do controle data_carga_siconv no manifesto.
+    - Atualiza bronze.ingestion_runs para SUCCESS.
     """
     logger.info(f"[{run_id}] Executando validação global da carga...")
-    spark = get_spark_session(config)
-    audit_mgr = AuditManager(spark)
+    if audit_mgr is None:
+        spark = get_spark_session(config)
+        audit_mgr = AuditManager(spark)
+    else:
+        spark = getattr(audit_mgr, "spark", None)
+
+    run_staging = os.path.join(config.storage.local_staging_dir, run_id)
+    initial_file = os.path.join(run_staging, "control_initial.json")
+    final_file = os.path.join(run_staging, "control_final.json")
+
+    # Se não foram fornecidos diretamente em memória, carregar dos arquivos persistidos pelo run
+    if control_initial_info is None:
+        if not os.path.exists(initial_file):
+            raise RuntimeError(f"Evidência de controle inicial ausente para a execução {run_id} ({initial_file}).")
+        with open(initial_file, "r", encoding="utf-8") as f:
+            control_initial_info = json.load(f)
+
+    if control_final_info is None:
+        if not os.path.exists(final_file):
+            raise RuntimeError(f"Evidência de controle final ausente para a execução {run_id} ({final_file}).")
+        with open(final_file, "r", encoding="utf-8") as f:
+            control_final_info = json.load(f)
 
     # Verificar consistência de data_carga
     raw_init = control_initial_info.get("source_data_carga_raw")
@@ -354,11 +397,11 @@ def run_validate_global(
         )
         raise RuntimeError(err)
 
-    # Verificar manifestos para este run_id
+    # Verificar manifestos para este run_id (apenas os 4 datasets analíticos)
     manifest_df = spark.read.format("delta").load(audit_mgr.manifest_path).filter(
-        F.col("ingestion_run_id") == run_id
+        f"ingestion_run_id = '{run_id}' AND status = 'SUCCESS' AND dataset_id != '{config.control.id}'"
     )
-    success_manifests = manifest_df.filter(F.col("status") == "SUCCESS").collect()
+    success_manifests = manifest_df.collect()
     successful_count = len(success_manifests)
 
     if successful_count < len(config.datasets):
@@ -374,7 +417,10 @@ def run_validate_global(
         )
         raise RuntimeError(err)
 
-    # Atualizar execução para SUCCESS
+    # Ativar data_carga_siconv no manifesto somente após sucesso comprovado
+    audit_mgr.record_control_manifest(run_id, control_final_info)
+
+    # Atualizar execução para SUCCESS mantendo successful_datasets contando os datasets analíticos
     audit_mgr.finish_run(
         run_id=run_id,
         status="SUCCESS",
@@ -383,7 +429,7 @@ def run_validate_global(
         retention_status="PENDING"
     )
 
-    logger.info(f"[{run_id}] Validação global concluída com sucesso para os {successful_count} datasets.")
+    logger.info(f"[{run_id}] Validação global concluída com sucesso para os {successful_count} datasets analíticos e controle ativado.")
     return True
 
 def run_retention_step(config: AppConfig, run_id: str, dry_run: bool = False) -> Dict[str, Any]:
@@ -486,10 +532,6 @@ if __name__ == "__main__":
     elif args.action == "control_initial":
         ctrl_res = run_control_initial(cfg, cur_run_id, force=args.force)
         status_str = "STATUS_NO_CHANGE" if ctrl_res["is_no_change"] else "STATUS_CONTINUE"
-        status_file = os.path.join(cfg.storage.local_staging_dir, f"{cur_run_id}_status.txt")
-        os.makedirs(os.path.dirname(status_file), exist_ok=True)
-        with open(status_file, "w", encoding="utf-8") as f:
-            f.write(status_str)
         print(status_str)
     elif args.action == "ingest_dataset":
         if not args.dataset:
@@ -498,10 +540,7 @@ if __name__ == "__main__":
     elif args.action == "control_final":
         run_control_final(cfg, cur_run_id)
     elif args.action == "validate_global":
-        # Recarrega do controle
-        ctrl_init = fetch_and_validate_control(cfg, cur_run_id, S3StorageManager(cfg.storage))
-        ctrl_fin = fetch_and_validate_control(cfg, f"{cur_run_id}_final", S3StorageManager(cfg.storage))
-        run_validate_global(cfg, cur_run_id, ctrl_init, ctrl_fin)
+        run_validate_global(cfg, cur_run_id)
     elif args.action == "retention":
         run_retention_step(cfg, cur_run_id, dry_run=args.dry_run_retention)
     elif args.action == "cleanup":

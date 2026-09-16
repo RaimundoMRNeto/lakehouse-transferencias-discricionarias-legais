@@ -68,7 +68,7 @@
 
 #### Detalhamento por Dataset Analítico:
 
-| Dataset | Arquivo ZIP | Membro CSV | Tamanho ZIP (Bytes) | SHA-256 Oficial | Linhas Entrada (CSV Lógico) | Linhas Saída (Delta Gravado) | Duração Ingestão (s) | Versão Delta | Status |
+| Dataset | Arquivo ZIP | Membro CSV | Tamanho ZIP (Bytes) | SHA-256 do arquivo oficial calculado pelo pipeline | Linhas Entrada (CSV Lógico) | Linhas Saída (Delta Gravado) | Duração Ingestão (s) | Versão Delta | Status |
 |---|---|---|---|---|---|---|---|---|---|
 | `siconv_programa` | `siconv_programa.zip` | `siconv_programa.csv` | 11.126.803 | `617c9b75de5aa5c03e97fb90c6f34b175e3dabbd532e715c2889e19b1607f45c` | 1.257.350 | 1.257.350 | 153,39s | 0 | `SUCCESS` |
 | `siconv_programa_proposta` | `siconv_programa_proposta.zip` | `siconv_programa_proposta.csv` | 6.496.759 | `f8723df70f84c0489f7e3db2302106e8ff0ef7015d36e28e8a33c83923077006` | 1.158.975 | 1.158.975 | 54,27s | 0 | `SUCCESS` |
@@ -83,18 +83,18 @@
 
 ## 4. Testes Executados e Resultados Obtidos
 
-A suíte completa de testes contém 26 testes automatizados executados no ambiente Python 3.12 / Spark:
+Após a rodada corretiva do PR #1, a suíte completa de testes contém **43 testes automatizados** executados no ambiente Python 3.12 / Spark:
 
-| Módulo de Teste | Quantidade | Escopo Coberto | Resultado |
-|---|---|---|---|
-| `test_control.py` | 8 testes | Parsing de data válida, detecção de datas inexistentes (ex: 31/02), validação de formato, comportamento de NO_CHANGE em data igual, rejeição de NO_CHANGE por alteração de data, por `force=True`, por estado local inconsistente e na primeira execução. | **100% Aprovado** |
-| `test_csv_processor.py` | 8 testes | Decodificação estrita com UTF-8 BOM, delimitador `;`, preservação de quebras de linha entre aspas, zeros à esquerda, detecção de colunas vazias, colunas duplicadas, colisões com metadados técnicos, largura inconsistente de registros e validação de extração de ZIP com proteção anti-Zip Slip. | **100% Aprovado** |
-| `test_download_and_s3.py` | 3 testes | Download HTTP com streaming SHA-256 e promoção de `.part`, descarte de parciais corrompidos e nomenclatura padronizada de chaves S3 RAW. | **100% Aprovado** |
-| `test_retention.py` | 4 testes | Simulação A → B → C (protegendo B e C e marcando A para exclusão), repetição de hash idêntico sem expurgar versões anteriores, dry-run com zero exclusões e execução real com exclusão restrita a chaves exatas. | **100% Aprovado** |
-| `test_delta_and_audit.py` | 2 testes | Gravação Delta Spark com preservação estrita de `StringType` e zeros à esquerda (`000123`), anexação das 4 colunas técnicas e auditoria idempotente (sem duplicação de execuções ou manifestos). | **100% Aprovado** |
-| **DAG Import Test** | 1 teste | Compilação sintática e registro no DagBag do Airflow sem execução prematura. | **100% Aprovado** |
+| Módulo de Teste | Quantidade | Categoria | Escopo Coberto | Resultado |
+|---|---|---|---|---|
+| `test_control.py` | 21 testes | Unitário | Parsing de data válida e inválida, detecção de datas inexistentes (ex: 31/02), validação de formato, comportamento de NO_CHANGE em data igual, rejeição de NO_CHANGE por alteração de data, por `force=True`, por estado local inconsistente e na primeira execução; validação estrita de contrato CSV (1 coluna `data_carga`, 1 linha de dados, rejeição de colunas adicionais, colunas duplicadas, coluna ausente, zero linhas, múltiplas linhas, encoding inválido, largura inconsistente); validação temporal inicial x final (`validate_global` falha com A!=B e sucede com A==A ativando o manifesto). | **100% Aprovado** |
+| `test_csv_processor.py` | 8 testes | Unitário | Decodificação estrita com UTF-8 BOM, delimitador `;`, preservação de quebras de linha entre aspas, zeros à esquerda, detecção de colunas vazias, colunas duplicadas, colisões com metadados técnicos, largura inconsistente de registros e validação de extração de ZIP com proteção anti-Zip Slip. | **100% Aprovado** |
+| `test_download_and_s3.py` | 3 testes | Unitário | Download HTTP com streaming SHA-256 e promoção de `.part`, descarte de parciais corrompidos e nomenclatura padronizada de chaves S3 RAW. | **100% Aprovado** |
+| `test_retention.py` | 8 testes | Unitário | Validação do planejador real (`plan_dataset_retention`): simulação A → B → C (protegendo B e C e marcando A para exclusão) para datasets analíticos e para o controle `data_carga_siconv`, repetição B → B sem expurgar versão anterior distinta, rejeição de hashes de execuções FAILED, descarte de arquivos sem hash, simulação dry-run com zero exclusões, execução real com exclusão restrita a chaves exatas e tratamento de falha parcial sem interrupção. | **100% Aprovado** |
+| `test_delta_and_audit.py` | 3 testes | Integração Local | Gravação Delta Spark com preservação estrita de `StringType` e zeros à esquerda (`000123`), anexação das 4 colunas técnicas e auditoria idempotente em namespace descartável isolado (`_tests/r2/<uuid>`); teste de segurança contra destruição de histórico em `_ensure_tables_exist()` (caminho ausente inicializa, caminho válido preserva e caminho corrompido falha sem overwrite). | **100% Aprovado** |
 
-- **Total:** 26 testes executados, 26 aprovados, 0 falhas, 0 testes pendentes.
+- **Total:** 43 testes executados (40 unitários + 3 de integração local), 43 aprovados, 0 falhas, 0 testes pendentes.
+- **DAG Import Test:** 100% aprovado no Airflow (0 erros de importação).
 
 ---
 
@@ -188,19 +188,53 @@ docker exec mc mc ls local/bronze/raw/transferegov/
 
 ---
 
-## 9. Parecer Técnico Final
+---
 
-Com base no cumprimento integral de todos os critérios de aceite estabelecidos no documento diretriz:
-- Quatro ZIPs analíticos oficiais e controle baixados, validados e preservados no MinIO RAW;
-- Quatro tabelas Delta Bronze gravadas, reconciliadas sem divergência de linhas e consultáveis via Spark Thrift Server;
-- Campos oficiais mantidos com `StringType` sem inferência ou descarte de dados;
-- Auditoria persistente em `bronze.ingestion_runs` e `bronze.ingestion_manifest` operacional;
-- Controle de `data_carga`, parâmetro `force` e reaproveitamento por hash testados;
-- Rota otimizada `NO_CHANGE` comprovada no Airflow em menos de 1 minuto;
-- Política de retenção RAW de 2 versões validada;
-- Infraestrutura R1 plenamente preservada com `dbt debug` aprovado;
+## 10. Correções Pós-Revisão Técnica do PR #1
 
-O parecer conclusivo para o Marco R2 é:
+Em resposta à revisão técnica formal do PR #1, foram implementadas as correções nos 6 apontamentos bloqueadores e adicionado o fluxo de CI:
 
-# **PARECER: APROVADO**
-*(Parada obrigatória para revisão humana. Nenhuma alteração foi promovida para a branch main e nenhum desenvolvimento foi iniciado para R3/Silver).*
+### 10.1. Resumo dos Findings Resolvidos
+
+1. **Finding 1 — Validação temporal inicial x final corrigida:**
+   - **Causa:** A ação `validate_global` reexecutava duas novas leituras consecutivas de `data_carga`, ignorando as evidências de `controle_inicial` e `controle_final`.
+   - **Correção:** As etapas `run_control_initial` e `run_control_final` passaram a persistir suas evidências em `/data/staging/<run_id>/control_initial.json` e `/data/staging/<run_id>/control_final.json`. O arquivo de decisão da DAG foi movido para `/data/staging/<run_id>/decision.txt`. A etapa `run_validate_global` consome diretamente esses arquivos JSON sem novos downloads, compara `source_data_carga_raw` e falha se houver divergência (`A != B`), eliminando falsos positivos.
+   - **Regressão:** Testes automatizados `test_validate_global_fails_when_control_differs_a_vs_b` e `test_validate_global_succeeds_when_control_identical_a_vs_a` em `spark/tests/test_control.py`.
+
+2. **Finding 2 — Ativação de histórico e retenção de `data_carga_siconv`:**
+   - **Causa:** O ZIP de controle era preservado no RAW mas não possuía registro em `bronze.ingestion_manifest`, deixando `protected_hashes = []` e sujeitando seus objetos à exclusão indevida.
+   - **Correção:** Implementado `AuditManager.record_control_manifest()`, chamado exclusivamente no momento do sucesso global em `validate_global`. O controle ganha proveniência formal associada ao `run_id` com status `SUCCESS` sem inflar `successful_datasets` (que permanece contando estritamente os 4 datasets analíticos).
+   - **Regressão:** Teste `test_plan_retention_control_data_carga` em `spark/tests/test_retention.py` comprovando proteção de atual + anterior para o controle.
+
+3. **Finding 3 — Proteção estrita contra sobrescrita destrutiva em `_ensure_tables_exist()`:**
+   - **Causa:** Qualquer exceção ao ler `ingestion_runs` ou `ingestion_manifest` disparava criação de tabela vazia com `mode("overwrite")`, podendo apagar histórico em falhas temporárias de rede/S3.
+   - **Correção:** Implementada checagem explícita de existência física via Hadoop FileSystem (`fs.exists()`). Se o caminho inexiste, a tabela inicial é criada. Se existe fisicamente, tenta carregar; se a leitura falhar, uma exceção `RuntimeError` é propagada e nenhum `.write.mode("overwrite")` é executado.
+   - **Regressão:** Teste `test_audit_table_initialization_safety` em `spark/tests/test_delta_and_audit.py` cobrindo path ausente, path existente válido e path corrompido existente.
+
+4. **Finding 4 — Isolamento completo dos testes de integração:**
+   - **Causa:** Os testes de integração gravavam diretamente em `s3a://bronze/warehouse/_test_synthetic` e usavam o `AuditManager` padrão, inserindo registros de teste nas tabelas reais do lakehouse.
+   - **Correção:** `TestDeltaAndAudit` foi completamente refatorado para utilizar namespace isolado e descartável `s3a://bronze/_tests/r2/<uuid>/warehouse/`. No `tearDownClass`, apenas esse prefixo exato é limpo via S3 API. As tabelas operacionais foram higienizadas e seu estado foi verificado antes e depois dos testes (`runs=4, manifest=12` inalterados).
+   - **Regressão:** Execução completa da suíte de integração com validação de contagem inalterada nas tabelas operacionais.
+
+5. **Finding 5 — Validação estrita de contrato para `data_carga_siconv.csv`:**
+   - **Causa:** O parser apenas checava se a coluna `data_carga` existia e lia a primeira linha, ignorando colunas extras e linhas subsequentes.
+   - **Correção:** Implementada a função `validate_and_parse_control_csv()`, que exige exatamente 1 coluna chamada `data_carga`, exatamente 1 linha de dados com largura 1, encoding estrito UTF-8/BOM e formato de data `%d/%m/%Y %H:%M:%S` calendarizável. Rejeita zero linhas, múltiplas linhas, colunas adicionais e colunas duplicadas.
+   - **Regressão:** 11 novos testes unitários adicionados na classe `TestControlContractValidation` em `spark/tests/test_control.py`.
+
+6. **Finding 6 — Teste do planejador real de retenção:**
+   - **Causa:** `test_retention.py` utilizava listas locais sintéticas sem invocar a lógica de produção.
+   - **Correção:** O algoritmo de retenção foi desacoplado no helper puro de produção `plan_dataset_retention()`, consumido diretamente por `calculate_retention_plan()`.
+   - **Regressão:** 8 testes unitários cobrindo cenários A→B→C, repetição B→B, execuções FAILED, controle `data_carga_siconv`, dataset analítico, objetos sem hash, dry-run e falhas parciais de exclusão.
+
+7. **CI GitHub Actions (`.github/workflows/ci.yml`):**
+   - Criado workflow de CI configurado para PRs e pushes em `main` e `feat/**`.
+   - Inclui: Git hygiene check (`git diff --check`), compilação de sintaxe Python (`compileall`), validação do YAML de configuração das fontes e execução dos 40 testes unitários isolados.
+
+---
+
+## 11. Parecer Técnico Final
+
+Com base na implementação e aprovação de todos os 43 testes automatizados (40 unitários + 3 de integração local), na resolução integral dos 6 findings bloqueadores apontados na revisão do PR #1, na comprovação de que as tabelas operacionais não foram contaminadas e na adição do workflow de CI:
+
+# **PARECER: APROVADO PARA NOVA REVISÃO HUMANA**
+*(Parada obrigatória para revisão humana. Nenhuma alteração foi promovida para a branch main, nenhum merge foi executado e nenhum desenvolvimento foi iniciado para R3/Silver).*

@@ -67,21 +67,89 @@ class AuditManager:
         self.manifest_path = f"{warehouse_prefix}/ingestion_manifest"
         self._ensure_tables_exist()
 
-    def _ensure_tables_exist(self):
-        """Inicializa as tabelas Delta caso ainda não existam."""
+    def _path_exists(self, path_str: str) -> bool:
+        """Verifica se o caminho existe fisicamente no storage via Hadoop FileSystem."""
         try:
-            self.spark.read.format("delta").load(self.runs_path)
-        except Exception:
-            logger.info(f"Criando tabela Delta inicial de runs em {self.runs_path}...")
-            empty_runs = self.spark.createDataFrame([], RUNS_SCHEMA)
-            empty_runs.write.format("delta").mode("overwrite").save(self.runs_path)
+            sc = self.spark.sparkContext
+            conf = sc._jsc.hadoopConfiguration()
+            Path = sc._gateway.jvm.org.apache.hadoop.fs.Path
+            p = Path(path_str)
+            fs = p.getFileSystem(conf)
+            return bool(fs.exists(p))
+        except Exception as exc:
+            logger.error(f"Erro de infraestrutura ao verificar caminho {path_str}: {exc}")
+            raise RuntimeError(f"Falha de infraestrutura ao inspecionar caminho {path_str}: {exc}") from exc
 
+    def _ensure_table(self, table_path: str, schema: StructType, table_name: str):
+        """
+        Garante a existência da tabela Delta com proteção estrita contra sobrescrita:
+        1. Se o caminho não existe fisicamente: inicializa com tabela vazia.
+        2. Se o caminho existe fisicamente: tenta carregar.
+           - Se carregar com sucesso: tabela válida, preserva.
+           - Se falhar na leitura: propaga a exceção e JAMAIS executa overwrite!
+        """
+        exists = self._path_exists(table_path)
+        if not exists:
+            logger.info(f"Caminho {table_path} inexistente no storage. Inicializando tabela Delta de {table_name}...")
+            empty_df = self.spark.createDataFrame([], schema)
+            empty_df.write.format("delta").mode("overwrite").save(table_path)
+            return
+
+        # Caminho existe fisicamente no storage: tentar carregar para verificar integridade
         try:
-            self.spark.read.format("delta").load(self.manifest_path)
-        except Exception:
-            logger.info(f"Criando tabela Delta inicial de manifest em {self.manifest_path}...")
-            empty_manifest = self.spark.createDataFrame([], MANIFEST_SCHEMA)
-            empty_manifest.write.format("delta").mode("overwrite").save(self.manifest_path)
+            self.spark.read.format("delta").load(table_path).limit(1).collect()
+            logger.info(f"Tabela Delta de {table_name} em {table_path} verificada e operacional.")
+        except Exception as exc:
+            err_msg = (
+                f"Caminho {table_path} existe fisicamente no storage, mas a tabela Delta de {table_name} "
+                f"não pôde ser lida: {exc}. Operação abortada para evitar perda de dados históricos de auditoria."
+            )
+            logger.error(err_msg)
+            raise RuntimeError(err_msg) from exc
+
+    def _ensure_tables_exist(self):
+        """Inicializa as tabelas Delta caso ainda não existam fisicamente."""
+        self._ensure_table(self.runs_path, RUNS_SCHEMA, "runs")
+        self._ensure_table(self.manifest_path, MANIFEST_SCHEMA, "manifest")
+
+    def record_control_manifest(
+        self,
+        run_id: str,
+        control_info: Dict[str, Any],
+        duration_seconds: float = 0.0
+    ):
+        """
+        Registra a entrada no manifesto para o arquivo de controle data_carga_siconv.
+        Deve ser chamado exclusivamente após a validação global com status SUCCESS,
+        ativando formalmente a revisão de controle para a política de retenção.
+        """
+        now_utc = datetime.now(timezone.utc).isoformat()
+        manifest_entry = {
+            "ingestion_run_id": run_id,
+            "dataset_id": control_info.get("dataset_id", "data_carga_siconv"),
+            "source_url": control_info.get("source_url"),
+            "source_zip_file": control_info.get("source_file", "data_carga_siconv.zip"),
+            "source_member_file": control_info.get("source_member", "data_carga_siconv.csv"),
+            "source_sha256": control_info.get("sha256"),
+            "file_size_bytes": control_info.get("file_size_bytes", 0),
+            "retrieved_at_utc": control_info.get("retrieved_at_utc", now_utc),
+            "ingested_at_utc": now_utc,
+            "encoding": "utf-8-sig",
+            "delimiter": ";",
+            "columns": ["data_carga"],
+            "logical_input_rows": 1,
+            "delta_output_rows": 0,
+            "raw_s3_key": control_info.get("raw_s3_key"),
+            "delta_table_path": None,
+            "delta_version": None,
+            "duration_seconds": duration_seconds,
+            "status": "SUCCESS",
+            "reuse_reason": None,
+            "original_run_id": run_id,
+            "retention_status": "ACTIVE",
+            "error_message": None
+        }
+        self.record_manifest(manifest_entry)
 
     def start_run(
         self,
