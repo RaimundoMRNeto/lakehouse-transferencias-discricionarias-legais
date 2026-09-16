@@ -1,0 +1,12 @@
+# Detecta arquivos de texto automaticamente
+* text=auto
+
+# Infraestrutura e configuração: manter LF no repositório e no checkout
+Dockerfile text eol=lf
+**/Dockerfile text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.sh text eol=lf
+*.py text eol=lf
+*.sql text eol=lf
+*.md text eol=lf

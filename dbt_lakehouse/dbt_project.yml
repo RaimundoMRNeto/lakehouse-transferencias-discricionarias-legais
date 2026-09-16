@@ -1,0 +1,19 @@
+name: lakehouse_transferencias_discricionarias_legais
+version: "1.0.0"
+config-version: 2
+
+profile: dbt_lakehouse
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+
+target-path: "target"
+
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+models:
+  lakehouse_transferencias_discricionarias_legais:
+    +materialized: view

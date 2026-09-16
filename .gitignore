@@ -1,0 +1,27 @@
+# Variáveis de ambiente e credenciais locais
+.env
+
+# Logs do Airflow
+airflow/logs/*
+!airflow/logs/.gitkeep
+
+# Artefatos gerados pelo dbt
+dbt_lakehouse/target/
+dbt_lakehouse/dbt_packages/
+dbt_lakehouse/logs/
+
+# Banco local do Superset
+superset/superset.db
+
+# Arquivos Python temporários
+__pycache__/
+*.pyc
+
+# Configurações locais de IDE e sistema operacional
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Dados locais
+data/*
+!data/.gitkeep
