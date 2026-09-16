@@ -92,7 +92,8 @@ jobs:
             tests.test_control \
             tests.test_csv_processor \
             tests.test_download_and_s3 \
-            tests.test_retention
+            tests.test_retention \
+            tests.test_audit_safety
 
       - name: CI scope summary
         if: always()

@@ -11,8 +11,8 @@ import shutil
 import argparse
 import logging
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional
-from pyspark.sql import functions as F
+from typing import Dict, Any, Optional, Tuple
+from pyspark.sql import functions as F, SparkSession
 
 # Adiciona o diretório atual ao sys.path para garantir importação do pacote transferegov
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -35,6 +35,46 @@ logging.basicConfig(
 )
 logger = logging.getLogger("ingest_transferegov")
 
+def bootstrap_audit_and_catalog(
+    config: AppConfig,
+    spark: Optional[SparkSession] = None,
+    audit_mgr: Optional[AuditManager] = None,
+    catalog_mgr: Optional[CatalogManager] = None
+) -> Tuple[AuditManager, CatalogManager]:
+    """
+    Executa o bootstrap limpo e seguro das tabelas de auditoria (Finding 1):
+    1. Obter SparkSession
+    2. Instanciar AuditManager
+    3. AuditManager verifica/cria com segurança física Delta:
+       - s3a://bronze/warehouse/ingestion_runs
+       - s3a://bronze/warehouse/ingestion_manifest
+    4. Somente depois:
+       - Assegurar schema bronze no Thrift Server
+       - Registrar ingestion_runs no Thrift
+       - Registrar ingestion_manifest no Thrift
+    5. Validar leitura das tabelas pelo Thrift via query_count.
+    """
+    warehouse_location = f"s3a://{config.storage.s3_bucket_bronze}/{config.storage.warehouse_prefix}"
+    if spark is None and audit_mgr is None:
+        spark = get_spark_session(config)
+
+    if audit_mgr is None:
+        audit_mgr = AuditManager(spark, warehouse_prefix=warehouse_location)
+
+    if catalog_mgr is None:
+        catalog_mgr = CatalogManager(config.spark.thrift_host, config.spark.thrift_port)
+
+    # 4. Assegurar schema bronze no Thrift e registrar tabelas Delta físicas já válidas
+    catalog_mgr.ensure_schema("bronze", warehouse_location)
+    catalog_mgr.register_delta_table("bronze", "ingestion_runs", audit_mgr.runs_path)
+    catalog_mgr.register_delta_table("bronze", "ingestion_manifest", audit_mgr.manifest_path)
+
+    # 5. Validar leitura das tabelas pelo Thrift
+    catalog_mgr.query_count("bronze", "ingestion_runs")
+    catalog_mgr.query_count("bronze", "ingestion_manifest")
+
+    return audit_mgr, catalog_mgr
+
 def run_preflight(config: AppConfig, run_id: str) -> bool:
     """Verifica conectividade com serviços, espaço em disco e diretórios temporários."""
     logger.info(f"[{run_id}] Executando verificação de preflight...")
@@ -49,11 +89,8 @@ def run_preflight(config: AppConfig, run_id: str) -> bool:
     s3_mgr = S3StorageManager(config.storage)
     s3_mgr.s3_client.list_buckets()
 
-    # Validar conexão e schema no Thrift Server
-    catalog_mgr = CatalogManager(config.spark.thrift_host, config.spark.thrift_port)
-    catalog_mgr.ensure_schema("bronze", "s3a://bronze/warehouse")
-    catalog_mgr.register_delta_table("bronze", "ingestion_runs", "s3a://bronze/warehouse/ingestion_runs")
-    catalog_mgr.register_delta_table("bronze", "ingestion_manifest", "s3a://bronze/warehouse/ingestion_manifest")
+    # Bootstrap seguro e ordenado das tabelas de auditoria física e catálogo Thrift
+    bootstrap_audit_and_catalog(config)
 
     logger.info(f"[{run_id}] Preflight concluído com sucesso.")
     return True
@@ -88,14 +125,14 @@ def run_control_initial(config: AppConfig, run_id: str, force: bool) -> Dict[str
             except Exception as e:
                 return False, f"Falha na consulta SQL da tabela {ds_cfg.table_name}: {e}"
 
-            # Verificar se há manifesto ativo
+            # Verificar se há manifesto ativo pertencente a execução com sucesso global
             active_m = audit_mgr.get_active_manifest_for_dataset(ds_id)
             if not active_m:
-                return False, f"Nenhum manifesto ativo para dataset {ds_id}"
+                return False, f"Nenhum manifesto ativo de execução SUCCESS para dataset {ds_id}"
 
             # Verificar se o arquivo RAW correspondente existe no MinIO
             raw_key = active_m.get("raw_s3_key")
-            if not raw_key or not s3_mgr.s3_client.head_object(Bucket=s3_mgr.bucket, Key=raw_key):
+            if not raw_key or not s3_mgr.raw_key_exists(raw_key):
                 return False, f"Arquivo RAW {raw_key} ausente no MinIO para dataset {ds_id}"
 
         return True, "Todas as 4 tabelas e arquivos RAW estão íntegros e legíveis"

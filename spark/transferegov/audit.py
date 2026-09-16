@@ -289,15 +289,44 @@ class AuditManager:
         return row.asDict()
 
     def get_active_manifest_for_dataset(self, dataset_id: str) -> Optional[Dict[str, Any]]:
-        """Retorna o manifesto ativo mais recente para determinado dataset."""
-        df = self.spark.read.format("delta").load(self.manifest_path)
-        active_df = df.filter(
+        """
+        Retorna o snapshot de manifesto ativo mais recente para determinado dataset.
+        Regra estrita: um manifesto só representa snapshot ativo quando:
+          manifest.status == 'SUCCESS' AND ingestion_runs.status == 'SUCCESS'
+        para o mesmo ingestion_run_id.
+
+        A ordenação é determinística por end_time_utc da run bem-sucedida e ingested_at_utc.
+        """
+        runs_df = self.spark.read.format("delta").load(self.runs_path)
+        manifest_df = self.spark.read.format("delta").load(self.manifest_path)
+
+        successful_runs = runs_df.filter(F.col("status") == "SUCCESS").select(
+            F.col("ingestion_run_id").alias("run_id_ref"),
+            F.col("end_time_utc").alias("run_end_time_utc")
+        )
+
+        dataset_manifest = manifest_df.filter(
             (F.col("dataset_id") == dataset_id) & (F.col("status") == "SUCCESS")
-        ).orderBy(F.col("ingested_at_utc").desc())
+        )
+
+        active_df = dataset_manifest.join(
+            successful_runs,
+            dataset_manifest.ingestion_run_id == successful_runs.run_id_ref,
+            "inner"
+        ).orderBy(
+            F.col("run_end_time_utc").desc(),
+            F.col("ingested_at_utc").desc()
+        )
 
         if active_df.count() == 0:
             return None
-        return active_df.collect()[0].asDict()
+
+        row = active_df.drop("run_id_ref", "run_end_time_utc").collect()[0]
+        return row.asDict()
+
+    def get_active_manifest_from_successful_run(self, dataset_id: str) -> Optional[Dict[str, Any]]:
+        """Alias semanticamente explícito para get_active_manifest_for_dataset."""
+        return self.get_active_manifest_for_dataset(dataset_id)
 
     def update_retention_records(self, deleted_keys: List[str]):
         """Atualiza no manifesto os objetos cuja exclusão por retenção foi confirmada."""
@@ -315,3 +344,35 @@ class AuditManager:
             F.when(F.col("raw_s3_key").isin(deleted_keys), now_utc).otherwise(F.col("retention_deleted_at_utc"))
         )
         updated_df.write.format("delta").mode("overwrite").save(self.manifest_path)
+
+def find_active_manifest_record(
+    dataset_id: str,
+    runs_records: List[Dict[str, Any]],
+    manifest_records: List[Dict[str, Any]]
+) -> Optional[Dict[str, Any]]:
+    """
+    Função pura que identifica o snapshot ativo de um dataset a partir de registros em memória:
+    1. Identifica os run_ids onde status == 'SUCCESS' e mapeia seus end_time_utc.
+    2. Filtra manifestos onde dataset_id coincide, status == 'SUCCESS' e pertencem a run_ids aprovados.
+    3. Ordena determinísticamente por end_time_utc decrescente, seguido de ingested_at_utc decrescente.
+    4. Retorna o registro do snapshot ativo mais recente, ou None.
+    """
+    successful_runs: Dict[str, str] = {
+        r["ingestion_run_id"]: (r.get("end_time_utc") or "")
+        for r in runs_records
+        if r.get("status") == "SUCCESS" and r.get("ingestion_run_id")
+    }
+
+    matching = []
+    for m in manifest_records:
+        r_id = m.get("ingestion_run_id")
+        if m.get("dataset_id") == dataset_id and m.get("status") == "SUCCESS" and r_id in successful_runs:
+            run_end_time = successful_runs[r_id]
+            ingested_at = m.get("ingested_at_utc") or ""
+            matching.append((run_end_time, ingested_at, m))
+
+    if not matching:
+        return None
+
+    matching.sort(key=lambda x: (x[0], x[1]), reverse=True)
+    return matching[0][2]

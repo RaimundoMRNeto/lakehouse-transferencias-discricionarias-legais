@@ -108,11 +108,16 @@ Duas tabelas Delta governadas no schema `bronze` e consultáveis via Spark Thrif
 
 ## 4. Integração Contínua (CI)
 
-O repositório possui workflow GitHub Actions em `.github/workflows/ci.yml` configurado para `push` e `pull_request` (branches `main` e `feat/**`).
+O repositório possui workflow GitHub Actions em `.github/workflows/ci.yml` configurado para `pull_request` (visando `main`) e `push` em `main`.
 - Verificação de formatação e quebras de linha (`git diff --check`).
 - Compilação de sintaxe e bytecode Python (`python -m compileall spark airflow/dags`).
 - Validação estrutural do arquivo YAML de configuração de fontes (`spark/transferegov_sources.yml`).
-- Execução isolada de 40 testes unitários que independem de cluster Spark/MinIO (`test_control.py`, `test_csv_processor.py`, `test_download_and_s3.py`, `test_retention.py`).
+- Execução isolada de 51 testes unitários que independem de cluster Spark/MinIO (`test_control.py`, `test_csv_processor.py`, `test_download_and_s3.py`, `test_retention.py`, `test_audit_safety.py`).
+
+### 4.1. Segunda Rodada Corretiva do PR #1
+1. **Bootstrap limpo das tabelas de auditoria (Finding 1):** Ordem estrita de inicialização garantida em `bootstrap_audit_and_catalog()`: 1) SparkSession, 2) AuditManager (cria/valida integridade física Delta de `ingestion_runs` e `ingestion_manifest`), 3) CatalogManager (`ensure_schema` e `register_delta_table`), 4) Validação de leitura externa pelo Thrift Server (`query_count`). Tabelas corrompidas no storage impedem registro no catálogo e propagam `RuntimeError`.
+2. **Snapshot ativo restrito a runs globalmente SUCCESS (Finding 2):** `get_active_manifest_for_dataset()` e helper puro `find_active_manifest_record()` exigem `manifest.status == 'SUCCESS' AND ingestion_runs.status == 'SUCCESS'` para o mesmo `ingestion_run_id`. Manifestos individuais de execuções com validação global `FAILED` ou `RUNNING` são estritamente rejeitados.
+3. **Resiliência do NO_CHANGE e propagação de erros S3:** `S3StorageManager.object_exists()` / `raw_key_exists()` trata ausência de objeto (404 / `NoSuchKey`) retornando `False`, fazendo com que `verify_local_integrity()` rejeite `NO_CHANGE` e prossiga com reprocessamento para recuperação. Erros de infraestrutura (500 `InternalError`, 403 `AccessDenied`, falha de rede) propagam exceção imediatamente, sem mascaramento.
 
 ## 5. Orquestração e Operação
 

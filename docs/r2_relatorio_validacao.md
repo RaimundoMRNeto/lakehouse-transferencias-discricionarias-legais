@@ -31,7 +31,9 @@
   - `spark/tests/test_csv_processor.py` *(Novo)*: Testes unitários de validação CSV, encoding e extração de ZIP.
   - `spark/tests/test_download_and_s3.py` *(Novo)*: Testes unitários de download, hash e storage S3.
   - `spark/tests/test_retention.py` *(Novo)*: Testes unitários da política de retenção RAW.
-  - `spark/tests/test_delta_and_audit.py` *(Novo)*: Testes de integração Spark/Delta, StringType, zeros à esquerda e auditoria idempotente.
+  - `spark/tests/test_delta_and_audit.py` *(Novo)*: Testes de integração Spark/Delta, StringType, zeros à esquerda, auditoria idempotente e bootstrap em namespace limpo.
+  - `spark/tests/test_audit_safety.py` *(Novo)*: Testes unitários isolados para bootstrap seguro de auditoria/catálogo e integridade do NO_CHANGE.
+  - `.github/workflows/ci.yml` *(Novo)*: Workflow de CI GitHub Actions com validação de whitespace, sintaxe e 51 testes unitários.
   - `airflow/dags/r2_ingestao_transferegov_bronze.py` *(Novo)*: DAG do Airflow com orquestração completa e branching.
   - `docs/r2_ingestao_bronze.md` *(Novo)*: Documentação detalhada da arquitetura e operação do R2.
   - `docs/r2_relatorio_validacao.md` *(Novo)*: Relatório formal de validação técnica.
@@ -227,14 +229,31 @@ Em resposta à revisão técnica formal do PR #1, foram implementadas as correç
    - **Regressão:** 8 testes unitários cobrindo cenários A→B→C, repetição B→B, execuções FAILED, controle `data_carga_siconv`, dataset analítico, objetos sem hash, dry-run e falhas parciais de exclusão.
 
 7. **CI GitHub Actions (`.github/workflows/ci.yml`):**
-   - Criado workflow de CI configurado para PRs e pushes em `main` e `feat/**`.
-   - Inclui: Git hygiene check (`git diff --check`), compilação de sintaxe Python (`compileall`), validação do YAML de configuração das fontes e execução dos 40 testes unitários isolados.
+   - Workflow de CI configurado para PRs e pushes em `main`.
+   - Inclui: Git hygiene check (`git diff --check`), compilação de sintaxe Python (`compileall`), validação do YAML de configuração das fontes e execução dos 51 testes unitários isolados.
+
+### 10.2. Segunda Rodada Corretiva do PR #1
+
+8. **Finding 1 — Bootstrap limpo das tabelas de auditoria:**
+   - **Causa:** Em `run_preflight()`, `CatalogManager.register_delta_table()` era executado antes de haver garantia física da criação dos diretórios Delta no MinIO/S3 pelo `AuditManager`, podendo falhar em um ambiente limpo.
+   - **Correção:** Criada a função `bootstrap_audit_and_catalog()`, que impõe estritamente a ordem: 1) obter `SparkSession`, 2) instanciar `AuditManager`, 3) `AuditManager` cria/verifica com segurança física Delta `ingestion_runs` e `ingestion_manifest`, 4) somente depois `CatalogManager` assegura o schema e registra as tabelas no Thrift, 5) validação de leitura externa pelo Thrift via `query_count`. Se o storage contiver tabela corrompida, o `AuditManager` propaga `RuntimeError` imediatamente e o catálogo não é registrado.
+   - **Regressão:** Testes automatizados unitários (`TestBootstrapSafety` em `test_audit_safety.py`) cobrindo Caso A (ambiente limpo), Caso B (ambiente existente) e Caso C (storage corrompido), além do teste de integração real `test_bootstrap_in_isolated_clean_namespace` em `test_delta_and_audit.py`.
+
+9. **Finding 2 — NO_CHANGE não aceita manifesto de execução FAILED:**
+   - **Causa:** `get_active_manifest_for_dataset()` consultava apenas a tabela de manifesto filtrando por `status == SUCCESS` e `dataset_id`, aceitando manifestos de execuções cuja validação global havia resultado em `FAILED` ou que ainda estavam `RUNNING`.
+   - **Correção:** `get_active_manifest_for_dataset()` (e alias `get_active_manifest_from_successful_run()`) foi refatorado para realizar inner join com `ingestion_runs.status == 'SUCCESS'`, garantindo que somente execuções globalmente aprovadas possam fornecer snapshots ativos. Adicionada função pura `find_active_manifest_record()` para ordenação determinística.
+   - **Regressão:** Testes unitários cobrindo Cenário 1 (run SUCCESS), Cenário 2 (run FAILED), Cenário 3 (run RUNNING) e Cenário 4 (dois snapshots, onde run novo FAILED mantém ativo o run antigo SUCCESS) em `test_audit_safety.py`, além do teste de integração com Delta real `test_active_manifest_delta_join_in_isolated_namespace` em `test_delta_and_audit.py`.
+
+10. **Resiliência do NO_CHANGE e integridade RAW no S3:**
+    - **Causa:** `verify_local_integrity()` chamava `s3_client.head_object()` diretamente, disparando exceção 404/NoSuchKey se o RAW fosse excluído e falhando o pipeline ao invés de prosseguir para recuperação; se houvesse erro de infraestrutura (500 ou 403), corria o risco de ser silenciado.
+    - **Correção:** Implementado `S3StorageManager.object_exists()` / `raw_key_exists()` com contrato estrito: retorna `False` em 404 / `NoSuchKey`, fazendo o `verify_local_integrity()` rejeitar `NO_CHANGE` para reprocessamento; em caso de falha de autenticação, erro 500 ou problema de rede, propaga a exceção imediatamente sem mascarar o erro.
+    - **Regressão:** Testes unitários cobrindo Cenário 5 (RAW presente), Cenário 6 (RAW 404 rejeita NO_CHANGE sem falhar tarefa) e Cenário 7 (erro S3 500 / 403 propaga exceção) em `test_audit_safety.py`.
 
 ---
 
 ## 11. Parecer Técnico Final
 
-Com base na implementação e aprovação de todos os 43 testes automatizados (40 unitários + 3 de integração local), na resolução integral dos 6 findings bloqueadores apontados na revisão do PR #1, na comprovação de que as tabelas operacionais não foram contaminadas e na adição do workflow de CI:
+Com base na implementação e aprovação de todos os **56 testes automatizados** (51 testes unitários isolados no CI + 5 testes de integração local em cluster Spark/MinIO/Thrift), na resolução integral dos 2 findings bloqueadores restantes da segunda revisão do PR #1, na comprovação de que as tabelas operacionais não sofreram contaminação e no funcionamento estrito do bootstrap limpo e dos gates de integridade:
 
-# **PARECER: APROVADO PARA NOVA REVISÃO HUMANA**
+# **PARECER: APROVADO PARA REVISÃO FINAL DO PR #1**
 *(Parada obrigatória para revisão humana. Nenhuma alteração foi promovida para a branch main, nenhum merge foi executado e nenhum desenvolvimento foi iniciado para R3/Silver).*

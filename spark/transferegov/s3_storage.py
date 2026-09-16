@@ -110,14 +110,37 @@ class S3StorageManager:
             "status": "UPLOADED"
         }
 
-    def check_raw_exists(self, dataset_id: str, sha256: str, file_name: str) -> bool:
-        """Verifica se a chave RAW existe no S3."""
-        s3_key = self.build_raw_s3_key(dataset_id, sha256, file_name)
+    def object_exists(self, key: str) -> bool:
+        """
+        Verifica se um objeto existe no bucket S3.
+        Contrato:
+        - Objeto existe: retorna True
+        - 404 / NoSuchKey / NotFound: retorna False
+        - Erros de autenticação, permissão, timeout, 500, falha de rede ou outros erros S3:
+          propaga exceção imediatamente (nunca converte falhas de infraestrutura em False).
+        """
         try:
-            self.s3_client.head_object(Bucket=self.bucket, Key=s3_key)
+            self.s3_client.head_object(Bucket=self.bucket, Key=key)
             return True
-        except ClientError:
-            return False
+        except ClientError as exc:
+            error_code = str(exc.response.get("Error", {}).get("Code", ""))
+            http_status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+            if error_code in ("404", "NoSuchKey", "NotFound") or http_status == 404:
+                return False
+            logger.error(f"Erro S3 inesperado ({error_code}) ao verificar existência de '{key}': {exc}")
+            raise
+        except Exception as exc:
+            logger.error(f"Falha de infraestrutura ao acessar S3 para chave '{key}': {exc}")
+            raise
+
+    def raw_key_exists(self, key: str) -> bool:
+        """Alias explícito para verificação de chaves RAW com o mesmo contrato de object_exists."""
+        return self.object_exists(key)
+
+    def check_raw_exists(self, dataset_id: str, sha256: str, file_name: str) -> bool:
+        """Verifica se a chave RAW existe no S3 utilizando o contrato estrito de object_exists."""
+        s3_key = self.build_raw_s3_key(dataset_id, sha256, file_name)
+        return self.object_exists(s3_key)
 
     def list_dataset_raw_objects(self, dataset_id: str) -> List[Dict[str, Any]]:
         """Lista todos os objetos RAW sob o prefixo do dataset."""
