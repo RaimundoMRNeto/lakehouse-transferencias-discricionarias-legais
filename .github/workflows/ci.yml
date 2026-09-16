@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  r2-quality:
+    name: R2 quality checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install lightweight test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            "pyspark==3.4.3" \
+            "PyYAML>=6,<7" \
+            "requests>=2.31,<3" \
+            "boto3>=1.34,<2" \
+            "PyHive==0.7.0" \
+            "thrift==0.16.0"
+
+      - name: Check whitespace in changed lines
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            git diff --check "origin/${{ github.base_ref }}...HEAD"
+          else
+            git diff --check HEAD^ HEAD
+          fi
+
+      - name: Compile Python sources
+        run: python -m compileall -q spark airflow/dags
+
+      - name: Validate Transferegov YAML
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import yaml
+
+          path = Path("spark/transferegov_sources.yml")
+          data = yaml.safe_load(path.read_text(encoding="utf-8"))
+
+          assert isinstance(data, dict), "transferegov_sources.yml deve conter um mapping YAML"
+          assert data.get("base_url"), "base_url ausente"
+          assert data.get("control_source", {}).get("id") == "data_carga_siconv", "control_source inválido"
+
+          datasets = data.get("analytical_datasets")
+          assert isinstance(datasets, list), "analytical_datasets deve ser uma lista"
+
+          expected = {
+              "siconv_programa",
+              "siconv_programa_proposta",
+              "siconv_proposta",
+              "siconv_convenio",
+          }
+          actual = {item.get("id") for item in datasets}
+          assert actual == expected, f"datasets inesperados: {actual}"
+
+          print("YAML Transferegov válido.")
+          PY
+
+      - name: Run isolated R2 unit tests
+        working-directory: spark
+        env:
+          PYTHONPATH: .
+        run: |
+          python -m unittest -v \
+            tests.test_control \
+            tests.test_csv_processor \
+            tests.test_download_and_s3 \
+            tests.test_retention \
+            tests.test_audit_safety
+
+      - name: CI scope summary
+        if: always()
+        run: |
+          echo "CI cobre: whitespace, sintaxe Python, YAML e testes unitários isolados do R2."
+          echo "Validações Spark/Delta/MinIO/Airflow e carga real permanecem como gates locais do projeto."

@@ -22,4 +22,5 @@ e legais.
 
 ## Status do projeto
 
-R1 — configuração da infraestrutura Lakehouse.
+- **R1** — Configuração da infraestrutura Lakehouse (concluído).
+- **R2** — Ingestão e camada Bronze dos dados oficiais do Transferegov (concluído e validado).

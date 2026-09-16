@@ -1,0 +1,70 @@
+# Configuração centralizada das fontes oficiais Transferegov para a camada Bronze
+base_url: "https://api-publica.transferegov.gestao.gov.br/downloads/dadosgov/"
+
+control_source:
+  id: "data_carga_siconv"
+  zip_file: "data_carga_siconv.zip"
+  member_file: "data_carga_siconv.csv"
+  expected_column: "data_carga"
+  date_format: "%d/%m/%Y %H:%M:%S"
+  encoding: "utf-8-sig"
+  delimiter: ";"
+
+analytical_datasets:
+  - id: "siconv_programa"
+    zip_file: "siconv_programa.zip"
+    member_file: "siconv_programa.csv"
+    table_name: "siconv_programa"
+    delta_path: "s3a://bronze/warehouse/siconv_programa"
+    raw_s3_prefix: "s3://bronze/raw/transferegov/siconv_programa"
+  - id: "siconv_programa_proposta"
+    zip_file: "siconv_programa_proposta.zip"
+    member_file: "siconv_programa_proposta.csv"
+    table_name: "siconv_programa_proposta"
+    delta_path: "s3a://bronze/warehouse/siconv_programa_proposta"
+    raw_s3_prefix: "s3://bronze/raw/transferegov/siconv_programa_proposta"
+  - id: "siconv_proposta"
+    zip_file: "siconv_proposta.zip"
+    member_file: "siconv_proposta.csv"
+    table_name: "siconv_proposta"
+    delta_path: "s3a://bronze/warehouse/siconv_proposta"
+    raw_s3_prefix: "s3://bronze/raw/transferegov/siconv_proposta"
+  - id: "siconv_convenio"
+    zip_file: "siconv_convenio.zip"
+    member_file: "siconv_convenio.csv"
+    table_name: "siconv_convenio"
+    delta_path: "s3a://bronze/warehouse/siconv_convenio"
+    raw_s3_prefix: "s3://bronze/raw/transferegov/siconv_convenio"
+
+csv_options:
+  delimiter: ";"
+  encoding: "utf-8-sig"
+  quote: "\""
+  escape: "\""
+  multiline: true
+  header: true
+  empty_value: ""
+  null_value: null
+
+storage:
+  s3_endpoint: "http://minio:9000"
+  s3_access_key: "minio"
+  s3_secret_key: "minio123"
+  s3_bucket_bronze: "bronze"
+  s3_region: "us-east-1"
+  raw_prefix: "raw/transferegov"
+  warehouse_prefix: "warehouse"
+  local_landing_dir: "/data/landing"
+  local_staging_dir: "/data/staging"
+
+spark:
+  master: "spark://spark-master:7077"
+  app_name: "R2_Ingestao_Bronze_Transferegov"
+  thrift_host: "spark-thrift-server"
+  thrift_port: 10000
+  executor_memory: "1G"
+  executor_cores: 1
+  cores_max: 2
+
+retention:
+  raw_versions_per_dataset: 2
