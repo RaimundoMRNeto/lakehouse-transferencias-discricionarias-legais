@@ -233,3 +233,26 @@ Nesta etapa corretiva pré-PR, foram endereçados os seguintes pontos identifica
 - **Desativação de renderização HTML na tabela**: A tabela detalhada exibe apenas valores textuais e numéricos da fonte. A renderização HTML foi desabilitada (`allow_render_html: false`) em `superset/setup_r5_assets.py`, no asset versionado `superset/assets/r5_mvp/charts/Detalhamento_de_propostas_e_convenios_12.yaml` e no banco SQLite interno do Superset, por não ser necessária ao dashboard e para reduzir a superfície de interpretação de conteúdo não confiável.
 - **Nova validação dos assets e testes**: Reexecutada com êxito a suíte de 8 testes dbt (`PASS=8 WARN=0 ERROR=0 SKIP=0`), a validação analítica sob 5 cenários com filtros no Superset (`superset/validate_r5_filters.py`) e a integridade de compilação Python.
 - **Rastreabilidade Git**: HEAD inicial da etapa registrado em `31a459b4a5f8f6966fe104d0b3b94e47117a4f70`.
+
+---
+
+## 11. R5-MVP.2 — Performance do Serving Analítico e Eliminação de Timeouts no Superset
+
+Nesta etapa de otimização física de performance analítica, foi solucionado o finding prático de timeouts de 60 segundos nos gráficos analíticos do Superset:
+
+### 11.1 Causa Raiz Identificada
+- **Concorrência de Joins Pesados**: O dashboard dispara 12 consultas analíticas simultâneas mais consultas de filtros. Como o cluster Spark local possui 4 slots de execução paralela (2 workers x 2 cores), consultas com 7 joins concorrentes enfileiravam e ultrapassavam os 60 segundos do timeout do Superset.
+- **Custo de `COUNT(DISTINCT)`**: Desnecessário diante da integridade comprovada de chaves no Star Schema da camada Gold.
+
+### 11.2 Ações Executadas
+1. **Prova Matemática de Equivalência**: Comprovado formalmente que $\operatorname{COUNT}(*) \equiv \operatorname{COUNT}(\text{DISTINCT } \text{id\_proposta})$ e $\operatorname{COUNT}(\text{numero\_convenio}) \equiv \operatorname{COUNT}(\text{DISTINCT } \text{numero\_convenio})$, com 0 divergências em todos os 19 anos, 27 UFs e órgãos concedentes (`superset/prove_metric_equivalence.py`).
+2. **Serving Mart Físico Delta Lake**: Implementação do modelo `gold.mart_superset_proposta_convenio` em dbt (`materialized='table'`, `file_format='delta'`, `schema='gold'`), que materializa o resultado da view semântica. A view permanece como contrato lógico centralizado.
+3. **Promovido Dataset no Superset**: O dataset oficial no Superset foi atualizado para consumir diretamente a tabela física `gold.mart_superset_proposta_convenio` com expressões otimizadas (`COUNT(*)`, `COUNT(numero_convenio)`), preservando UUIDs, layouts e os 8 native filters.
+4. **Reconciliação e Testes Rigorosos**:
+   - 6 novos testes dbt adicionados para o mart (PK not null, unique, volume 1.157.619 linhas, 287.584 convênios e reconciliação financeira com tolerância R$ 0,00).
+   - Suíte de 35 testes singulares do Lakehouse aprovada com 100% de sucesso (`PASS=35 WARN=0 ERROR=0`).
+   - Validação de 5 cenários com filtros (`superset/validate_r5_filters.py`) aprovada sem erros SQL e com tempos de execução entre 0,8 s e 2,1 s.
+5. **Ganhos de Performance Quantificados**:
+   - Consultas individuais Q1 a Q6 aceleradas de ~5-10 s para **0,5 s - 0,9 s (speedup de 9x a 12x)**.
+   - Carga concorrente de todos os 12 componentes do dashboard executada em **9,36 segundos no total**, com tempo máximo individual de **5,56 segundos** (margem de segurança > 54 segundos em relação ao timeout de 60 s).
+   - Relatório técnico completo disponível em: `docs/r5/r5_mvp2_performance.md`.
