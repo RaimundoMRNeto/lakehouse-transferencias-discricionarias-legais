@@ -155,11 +155,11 @@ Todas as contagens e agregações foram validadas pelo script distribuído `scri
 
 ## 7. Testes Automatizados e Idempotência
 
-- **Suíte de Testes dbt:** 42 testes executados (testes genéricos de `not_null`, `unique`, `accepted_values`, `relationships` e 10 testes singulares de integridade, contagem e reconciliação financeira).
-  - Resultado: **42 PASS / 0 WARN / 0 ERROR / 0 SKIP**.
+- **Suíte de Testes dbt:** 43 testes executados (testes genéricos de `not_null`, `unique`, `accepted_values`, `relationships` e 11 testes singulares de integridade, contagem, superchave e reconciliação financeira).
+  - Resultado: **43 PASS / 0 WARN / 0 ERROR / 0 SKIP**.
 - **Teste de Idempotência:**
   - A execução de `dbt build` foi realizada duas vezes consecutivas sobre a mesma base Bronze.
-  - Ambas as execuções resultaram em `47 of 47 PASS` (5 modelos + 42 testes).
+  - Ambas as execuções resultaram em `48 of 48 PASS` (5 modelos + 43 testes).
   - A execução posterior do script de reconciliação confirmou zero duplicações, zero variações financeiras e hashes perfeitamente determinísticos.
 - **Performance de Materialização:**
   - `siconv_convenio`: 20,50 s
@@ -216,7 +216,7 @@ Esta subetapa resolveu de forma definitiva as 3 pendências de reprodutibilidade
 ### 10.3. Finding 3: Teste Singular dbt da Superchave Semântica de Elegibilidade
 - **Problema:** A surrogate key `id_programa_elegibilidade` foi gerada a partir dos dados brutos da Bronze. Faltava um teste singular no dbt garantindo a unicidade das 5 colunas semânticas normalizadas e tipadas na Silver.
 - **Solução Implementada:**
-  - Criado o teste singular [`unique_programa_elegibilidade_business_superkey.sql`](file:///c:/Dev/lakehouse-transferencias-discricionarias-legais/dbt_lakehouse/tests/unique_programa_elegibilidade_business_superkey.sql) cobrindo:
+  - Criado o teste singular [`unique_programa_elegibilidade_business_superkey.sql`](../../dbt_lakehouse/tests/unique_programa_elegibilidade_business_superkey.sql) cobrindo:
     `(id_programa, modalidade_programa, natureza_juridica_programa, uf_programa, acao_orcamentaria)`.
   - O teste foi integrado à execução de `dbt test` / `dbt build`, elevando a suíte de testes dbt de 42 para **43 testes aprovados** (0 falhas).
   - A verificação da superchave semântica também foi incorporada à suíte do script Python distribuído `scripts/reconcile_bronze_silver.py`.
