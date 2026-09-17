@@ -27,3 +27,12 @@ models:
         - "SET spark.sql.parquet.datetimeRebaseModeInRead=CORRECTED"
         - "SET spark.sql.parquet.int96RebaseModeInWrite=CORRECTED"
         - "SET spark.sql.parquet.int96RebaseModeInRead=CORRECTED"
+    gold:
+      +materialized: table
+      +file_format: delta
+      +schema: gold
+      +pre-hook:
+        - "SET spark.sql.parquet.datetimeRebaseModeInWrite=CORRECTED"
+        - "SET spark.sql.parquet.datetimeRebaseModeInRead=CORRECTED"
+        - "SET spark.sql.parquet.int96RebaseModeInWrite=CORRECTED"
+        - "SET spark.sql.parquet.int96RebaseModeInRead=CORRECTED"
