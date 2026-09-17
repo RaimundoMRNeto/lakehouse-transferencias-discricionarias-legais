@@ -186,3 +186,37 @@ Todas as contagens e agregações foram validadas pelo script distribuído `scri
 - Métricas agregadas por município, estado, ministério e ano fiscal.
 - Políticas analíticas para tratamento do saldo nos dois convênios conflitantes em relatórios de fechamento contábil.
 - Painéis e dashboards no Apache Superset.
+
+---
+
+## 10. R3-B.1 — Correções Finais de Reprodutibilidade e Robustez de Snapshot
+
+Esta subetapa resolveu de forma definitiva as 3 pendências de reprodutibilidade e qualidade identificadas na pré-revisão humana antes da abertura de PR:
+
+### 10.1. Finding 1: Bootstrap Seguro e Idempotente do Schema Silver (`scripts/bootstrap_silver.py`)
+- **Problema:** A criação do database `silver` no Spark Thrift Server dependia de estado prévio ou corria risco de criar os dados no diretório padrão (`s3a://gold/warehouse/silver.db`), violando a separação física do bucket S3 `silver`.
+- **Solução Implementada:** Criado script parametrizável e auditável com tratamento estrito dos 3 cenários operacionais:
+  - *Caso A (Schema inexistente):* Executa `CREATE DATABASE IF NOT EXISTS silver LOCATION 's3a://silver/warehouse'` e valida retrospectivamente via `DESCRIBE DATABASE EXTENDED`.
+  - *Caso B (Schema existente com location correto):* Operação idempotente NOOP retornando exit code 0, tratando variações de trailing slashes (`normalize_location`).
+  - *Caso C (Schema existente com location divergente):* Aborta imediatamente com exit code 1 e mensagem de erro explicativa, sem alterar ou dropar o catálogo.
+- **Testabilidade:** Coberto por 9 testes unitários isolados com mocks em `spark/tests/test_bootstrap_silver.py` e integrado ao pipeline de CI (`.github/workflows/ci.yml`).
+
+### 10.2. Finding 2: Reconciliação Dinâmica e Independente de Snapshot (`scripts/reconcile_bronze_silver.py`)
+- **Problema:** O script de reconciliação R3-B continha regras de sucesso baseadas em números hard-coded do snapshot histórico de 16/09/2026 (ex.: somas monetárias e contagens fixas de conflito de convênios), tornando o gate vulnerável em futuras cargas ou reprocessamentos.
+- **Solução Implementada:**
+  - O modo padrão agora é **100% dinâmico**, calculando as métricas diretamente contra a camada Bronze em tempo de execução:
+    - Contagens de linhas: `Silver == Bronze` para todas as tabelas.
+    - Conflitos de convênio: Agregação da Bronze (`GROUP BY NR_CONVENIO`) comparada com Silver (`has_source_conflict` e `source_conflict_count`).
+    - Integridade referencial: Validação de 0 órfãos inesperados na ponte além do catálogo conhecido (`KNOWN_SOURCE_EXCEPTIONS = {321453, 1427146, 296629}`).
+    - Propostas sem programa: Métrica informativa `INFO` garantindo que o volume na Silver reflita com precisão o volume na Bronze.
+    - Reconciliação financeira: `SUM(Bronze) == SUM(Silver)` em `DECIMAL(38,2)` com tolerância de **R$ 0,00** (divergência zero).
+  - Adicionada flag opcional `--check-baseline` para permitir a validação regressiva contra as métricas do snapshot de referência de 16/09/2026.
+  - Otimização de estabilidade no Spark Thrift Server com desativação do broadcast join de tabelas volumosas (`spark.sql.autoBroadcastJoinThreshold = -1`), prevenindo esgotamento de memória em joins pesados.
+
+### 10.3. Finding 3: Teste Singular dbt da Superchave Semântica de Elegibilidade
+- **Problema:** A surrogate key `id_programa_elegibilidade` foi gerada a partir dos dados brutos da Bronze. Faltava um teste singular no dbt garantindo a unicidade das 5 colunas semânticas normalizadas e tipadas na Silver.
+- **Solução Implementada:**
+  - Criado o teste singular [`unique_programa_elegibilidade_business_superkey.sql`](file:///c:/Dev/lakehouse-transferencias-discricionarias-legais/dbt_lakehouse/tests/unique_programa_elegibilidade_business_superkey.sql) cobrindo:
+    `(id_programa, modalidade_programa, natureza_juridica_programa, uf_programa, acao_orcamentaria)`.
+  - O teste foi integrado à execução de `dbt test` / `dbt build`, elevando a suíte de testes dbt de 42 para **43 testes aprovados** (0 falhas).
+  - A verificação da superchave semântica também foi incorporada à suíte do script Python distribuído `scripts/reconcile_bronze_silver.py`.

@@ -1,19 +1,24 @@
 #!/usr/bin/env python3
 """
-Script de reconciliação Bronze -> Silver (R3-B).
+Script de reconciliação Bronze -> Silver (R3-B / R3-B.1).
 Valida de forma estrita, somente leitura e distribuída no Spark:
-- Contagens de linhas (row counts)
-- Unicidade de chaves técnicas e pares compostos
-- Comportamento de chaves de negócio e conflitos legítimos
-- Integridade referencial e catálogo de orfandades conhecidas
-- Reconciliação financeira exata com DECIMAL(38,2)
+- Contagens de linhas dinâmicas (row counts Bronze vs Silver)
+- Unicidade de chaves técnicas, pares compostos e superchaves semânticas
+- Comportamento dinâmico de chaves de negócio e conflitos de fonte
+- Integridade referencial e auditoria de orfandade de fonte
+- Reconciliação financeira exata em DECIMAL(38,2) (tolerância R$ 0,00)
 - Preservação da linhagem técnica de metadados
+
+Por padrão opera em modo DINÂMICO (independente do snapshot histórico).
+A flag --check-baseline permite checar opcionalmente conformidade com o baseline
+do snapshot histórico de 16/09/2026.
 """
 import sys
 import time
+import argparse
 import logging
 from decimal import Decimal
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Tuple, Set
 from pyhive import hive
 
 logging.basicConfig(
@@ -22,11 +27,41 @@ logging.basicConfig(
 )
 logger = logging.getLogger("reconcile_bronze_silver")
 
-KNOWN_ORPHAN_PROPOSALS = {321453, 1427146, 296629}
+KNOWN_SOURCE_EXCEPTIONS = {321453, 1427146, 296629}
+
+HISTORICAL_BASELINE = {
+    "row_counts": {
+        "Proposta": 1157619,
+        "Ponte Programa-Proposta": 1158975,
+        "Programa Elegibilidade": 1257350,
+        "Programa Cadastral": 53018,
+        "Convênio": 287586,
+    },
+    "convenio_conflicts": {
+        "distinct_convenios": 287584,
+        "conflict_keys": 2,
+        "conflict_observations": 4,
+        "clean_observations": 287582,
+    },
+    "unlinked_proposals": 78,
+    "financials": {
+        "Convênio - Valor Global": Decimal("356856636504.87"),
+        "Convênio - Valor Repasse": Decimal("331287339337.88"),
+        "Convênio - Valor Contrapartida": Decimal("23710083216.75"),
+        "Convênio - Valor Empenhado": Decimal("192071916388.96"),
+        "Convênio - Valor Desembolsado": Decimal("153212385725.46"),
+        "Proposta - Valor Global": Decimal("1495209875334.42"),
+        "Proposta - Valor Repasse": Decimal("1425758135735.63"),
+        "Proposta - Valor Contrapartida": Decimal("69451779598.79"),
+    }
+}
 
 
 def get_connection(host: str = "spark-thrift-server", port: int = 10000, user: str = "airflow"):
-    return hive.Connection(host=host, port=port, username=user)
+    conn = hive.Connection(host=host, port=port, username=user)
+    cur = conn.cursor()
+    cur.execute("SET spark.sql.autoBroadcastJoinThreshold = -1")
+    return conn
 
 
 def run_scalar_query(cur, query: str) -> Any:
@@ -45,7 +80,7 @@ def run_row_query(cur, query: str) -> Tuple:
     return ()
 
 
-def reconcile_row_counts(cur) -> bool:
+def reconcile_row_counts(cur, check_baseline: bool = False) -> bool:
     logger.info("=" * 60)
     logger.info("1. RECONCILIAÇÃO DE CONTAGEM DE LINHAS (ROW COUNTS)")
     logger.info("=" * 60)
@@ -70,14 +105,24 @@ def reconcile_row_counts(cur) -> bool:
         if diff != 0:
             all_passed = False
 
-        logger.info(f"[{status}] {label}: Bronze={b_cnt:,} | Silver={s_cnt:,} | Diff={diff:,} ({elapsed:.2f}s)")
+        baseline_info = ""
+        if check_baseline:
+            expected_base = HISTORICAL_BASELINE["row_counts"].get(label)
+            if expected_base is not None:
+                matches_base = (s_cnt == expected_base)
+                if not matches_base:
+                    all_passed = False
+                    status = "FAIL"
+                baseline_info = f" | Baseline={expected_base:,} ({'MATCH' if matches_base else 'MISMATCH'})"
+
+        logger.info(f"[{status}] {label}: Bronze={b_cnt:,} | Silver={s_cnt:,} | Diff={diff:,}{baseline_info} ({elapsed:.2f}s)")
 
     return all_passed
 
 
 def reconcile_key_uniqueness(cur) -> bool:
     logger.info("=" * 60)
-    logger.info("2. UNICIDADE DE CHAVES TÉCNICAS E PARES COMPOSTOS")
+    logger.info("2. UNICIDADE DE CHAVES TÉCNICAS, PARES E SUPERCHAVES")
     logger.info("=" * 60)
 
     checks = [
@@ -99,7 +144,7 @@ def reconcile_key_uniqueness(cur) -> bool:
             all_passed = False
         logger.info(f"[{status}] {tbl} ({col}): Total={total:,} | Distintos={distinct:,} | Colisões={diff} ({elapsed:.2f}s)")
 
-    # Test pair uniqueness on bridge
+    # 1. Unicidade do par composto na tabela associativa
     t0 = time.time()
     cur.execute("""
         SELECT count(*)
@@ -117,36 +162,89 @@ def reconcile_key_uniqueness(cur) -> bool:
         all_passed = False
     logger.info(f"[{status}] silver.siconv_programa_proposta (id_programa, id_proposta): Colisões={bridge_collisions} ({elapsed:.2f}s)")
 
+    # 2. Unicidade da superchave semântica de elegibilidade
+    t0 = time.time()
+    cur.execute("""
+        SELECT count(*)
+        FROM (
+            SELECT
+                id_programa,
+                modalidade_programa,
+                natureza_juridica_programa,
+                uf_programa,
+                acao_orcamentaria,
+                count(*) as cnt
+            FROM silver.siconv_programa_elegibilidade
+            GROUP BY
+                id_programa,
+                modalidade_programa,
+                natureza_juridica_programa,
+                uf_programa,
+                acao_orcamentaria
+            HAVING count(*) > 1
+        ) t
+    """)
+    superkey_collisions = cur.fetchall()[0][0]
+    elapsed = time.time() - t0
+    status = "PASS" if superkey_collisions == 0 else "FAIL"
+    if superkey_collisions != 0:
+        all_passed = False
+    logger.info(f"[{status}] silver.siconv_programa_elegibilidade (business superkey): Colisões={superkey_collisions} ({elapsed:.2f}s)")
+
     return all_passed
 
 
-def reconcile_convenio_conflicts(cur) -> bool:
+def reconcile_convenio_conflicts(cur, check_baseline: bool = False) -> bool:
     logger.info("=" * 60)
-    logger.info("3. QUALIDADE E DETECÇÃO DOS CONFLITOS DE CONVÊNIO")
+    logger.info("3. QUALIDADE E DETECÇÃO DINÂMICA DE CONFLITOS EM CONVÊNIOS")
     logger.info("=" * 60)
 
+    # 1. Agregação dinâmica na Bronze
     t0 = time.time()
     cur.execute("""
         SELECT
-            count(distinct numero_convenio) as distinct_convenios,
-            sum(case when source_conflict_count > 1 then 1 else 0 end) as conflict_observations,
-            count(distinct case when source_conflict_count > 1 then numero_convenio else null end) as conflict_keys,
-            sum(case when has_source_conflict then 1 else 0 end) as flagged_observations,
-            sum(case when not has_source_conflict then 1 else 0 end) as clean_observations
+            count(distinct NR_CONVENIO) as b_dist_keys,
+            sum(case when cnt > 1 then 1 else 0 end) as b_conf_keys,
+            sum(case when cnt > 1 then cnt else 0 end) as b_conf_obs,
+            sum(case when cnt = 1 then 1 else 0 end) as b_clean_obs
+        FROM (
+            SELECT NR_CONVENIO, count(*) as cnt
+            FROM bronze.siconv_convenio
+            GROUP BY NR_CONVENIO
+        ) t
+    """)
+    b_dist_keys, b_conf_keys, b_conf_obs, b_clean_obs = cur.fetchall()[0]
+
+    # 2. Agregação dinâmica na Silver
+    cur.execute("""
+        SELECT
+            count(distinct numero_convenio) as s_dist_keys,
+            count(distinct case when source_conflict_count > 1 then numero_convenio else null end) as s_conf_keys,
+            sum(case when source_conflict_count > 1 then 1 else 0 end) as s_conf_obs,
+            sum(case when has_source_conflict then 1 else 0 end) as s_flag_obs,
+            sum(case when not has_source_conflict then 1 else 0 end) as s_clean_obs
         FROM silver.siconv_convenio
     """)
-    row = cur.fetchall()[0]
+    s_dist_keys, s_conf_keys, s_conf_obs, s_flag_obs, s_clean_obs = cur.fetchall()[0]
+
+    # 3. Verificação de consistência entre flags e contagens
+    cur.execute("""
+        SELECT count(*)
+        FROM silver.siconv_convenio
+        WHERE (source_conflict_count > 1 and not has_source_conflict)
+           OR (source_conflict_count <= 1 and has_source_conflict)
+    """)
+    flag_inconsistencies = cur.fetchall()[0][0]
     elapsed = time.time() - t0
 
-    dist_keys, conf_obs, conf_keys, flag_obs, clean_obs = row
+    logger.info(f"Convênios distintos (business keys): Bronze={b_dist_keys:,} | Silver={s_dist_keys:,}")
+    logger.info(f"Chaves de negócio conflitantes:     Bronze={b_conf_keys:,} | Silver={s_conf_keys:,}")
+    logger.info(f"Observações com conflito de fonte:  Bronze={b_conf_obs:,} | Silver={s_conf_obs:,}")
+    logger.info(f"Observações flagradas (has_source_conflict=true): {s_flag_obs:,}")
+    logger.info(f"Observações limpas (has_source_conflict=false):    Bronze={b_clean_obs:,} | Silver={s_clean_obs:,}")
+    logger.info(f"Inconsistências de flag (count vs boolean): {flag_inconsistencies}")
 
-    logger.info(f"Convênios distintos (business keys): {dist_keys:,} (esperado: 287.584)")
-    logger.info(f"Chaves de negócio conflitantes: {conf_keys} (esperado: 2)")
-    logger.info(f"Observações com conflito de fonte: {conf_obs} (esperado: 4)")
-    logger.info(f"Observações marcadas has_source_conflict=true: {flag_obs} (esperado: 4)")
-    logger.info(f"Observações sem conflito has_source_conflict=false: {clean_obs} (esperado: 287.582)")
-
-    # Detalhar as chaves conflitantes
+    # Exibe amostra das observações conflitantes
     cur.execute("""
         SELECT numero_convenio, id_convenio_observacao, valor_saldo_conta, source_conflict_count
         FROM silver.siconv_convenio
@@ -154,24 +252,40 @@ def reconcile_convenio_conflicts(cur) -> bool:
         ORDER BY numero_convenio, id_convenio_observacao
     """)
     conflict_rows = cur.fetchall()
-    logger.info("Detalhe das observações conflitantes:")
+    logger.info(f"Detalhe das observações conflitantes encontradas ({len(conflict_rows)}):")
     for r in conflict_rows:
         logger.info(f"  NR_CONVENIO={r[0]} | ID_OBS={r[1][:16]}... | SALDO={r[2]} | COUNT={r[3]}")
 
-    passed = (
-        dist_keys == 287584 and
-        conf_keys == 2 and
-        conf_obs == 4 and
-        flag_obs == 4 and
-        clean_obs == 287582 and
-        len(conflict_rows) == 4
+    dynamic_pass = (
+        s_dist_keys == b_dist_keys and
+        s_conf_keys == b_conf_keys and
+        s_conf_obs == b_conf_obs and
+        s_flag_obs == b_conf_obs and
+        s_clean_obs == b_clean_obs and
+        flag_inconsistencies == 0 and
+        len(conflict_rows) == b_conf_obs
     )
+
+    baseline_pass = True
+    if check_baseline:
+        expected = HISTORICAL_BASELINE["convenio_conflicts"]
+        matches = (
+            s_dist_keys == expected["distinct_convenios"] and
+            s_conf_keys == expected["conflict_keys"] and
+            s_conf_obs == expected["conflict_observations"] and
+            s_clean_obs == expected["clean_observations"]
+        )
+        if not matches:
+            baseline_pass = False
+        logger.info(f"Validação de Baseline Histórico (16/09/2026): {'PASS' if matches else 'FAIL'}")
+
+    passed = dynamic_pass and baseline_pass
     status = "PASS" if passed else "FAIL"
-    logger.info(f"[{status}] Validação de Conflitos de Convênio concluída em {elapsed:.2f}s")
+    logger.info(f"[{status}] Reconciliação Dinâmica de Conflitos em Convênios concluída em {elapsed:.2f}s")
     return passed
 
 
-def reconcile_referential_integrity(cur) -> bool:
+def reconcile_referential_integrity(cur, check_baseline: bool = False) -> bool:
     logger.info("=" * 60)
     logger.info("4. INTEGRIDADE REFERENCIAL E AUDITORIA DE ORFANDADE")
     logger.info("=" * 60)
@@ -234,30 +348,53 @@ def reconcile_referential_integrity(cur) -> bool:
     bridge_prop_orphans = [r[0] for r in cur.fetchall()]
     elapsed = time.time() - t0
 
-    orphan_set = set(bridge_prop_orphans)
-    unexpected = orphan_set - KNOWN_ORPHAN_PROPOSALS
-    status = "PASS" if len(unexpected) == 0 and len(orphan_set) <= 3 else "FAIL"
+    orphan_set: Set[int] = {int(x) for x in bridge_prop_orphans if x is not None}
+    unexpected = orphan_set - KNOWN_SOURCE_EXCEPTIONS
+    status = "PASS" if len(unexpected) == 0 else "FAIL"
     if status != "PASS":
         all_passed = False
     logger.info(f"[{status}] silver.siconv_programa_proposta -> silver.siconv_proposta: Órfãos={sorted(list(orphan_set))} | Inesperados={sorted(list(unexpected))} ({elapsed:.2f}s)")
 
-    # 5. Propostas sem programa vinculado (esperado: 78)
+    if check_baseline:
+        matches_base = (orphan_set == KNOWN_SOURCE_EXCEPTIONS)
+        if not matches_base:
+            all_passed = False
+            logger.warning(f"[FAIL] Baseline orfandade divergente do histórico: esperado={KNOWN_SOURCE_EXCEPTIONS}, atual={orphan_set}")
+
+    # 5. Propostas sem programa vinculado (métrica puramente informativa INFO)
     t0 = time.time()
-    cur.execute("""
+    b_unlinked = run_scalar_query(cur, """
+        SELECT count(*)
+        FROM bronze.siconv_proposta p
+        LEFT JOIN bronze.siconv_programa_proposta pp ON p.ID_PROPOSTA = pp.ID_PROPOSTA
+        WHERE pp.ID_PROPOSTA IS NULL
+    """)
+    s_unlinked = run_scalar_query(cur, """
         SELECT count(*)
         FROM silver.siconv_proposta p
         LEFT JOIN silver.siconv_programa_proposta pp ON p.id_proposta = pp.id_proposta
         WHERE pp.id_proposta IS NULL
     """)
-    unlinked_proposals = cur.fetchall()[0][0]
     elapsed = time.time() - t0
-    status = "PASS" if unlinked_proposals == 78 else "WARN"
-    logger.info(f"[{status}] Propostas legítimas sem vínculo de programa: {unlinked_proposals} (esperado: 78) ({elapsed:.2f}s)")
+
+    diff_unlinked = s_unlinked - b_unlinked
+    if diff_unlinked != 0:
+        all_passed = False
+        logger.error(f"[FAIL] Divergência em propostas sem programa entre Bronze e Silver: Bronze={b_unlinked:,} | Silver={s_unlinked:,}")
+    else:
+        logger.info(f"[INFO] Propostas legítimas sem vínculo de programa: Bronze={b_unlinked:,} | Silver={s_unlinked:,} (preservadas integralmente, {elapsed:.2f}s)")
+
+    if check_baseline:
+        expected_unlinked = HISTORICAL_BASELINE["unlinked_proposals"]
+        matches = (s_unlinked == expected_unlinked)
+        if not matches:
+            all_passed = False
+        logger.info(f"[{'PASS' if matches else 'FAIL'}] Baseline propostas sem programa: {s_unlinked} (esperado: {expected_unlinked})")
 
     return all_passed
 
 
-def reconcile_financials(cur) -> bool:
+def reconcile_financials(cur, check_baseline: bool = False) -> bool:
     logger.info("=" * 60)
     logger.info("5. RECONCILIAÇÃO FINANCEIRA EXATA EM DECIMAL(38,2)")
     logger.info("=" * 60)
@@ -265,47 +402,39 @@ def reconcile_financials(cur) -> bool:
     financial_checks = [
         ("Convênio - Valor Global",
          "SELECT sum(cast(replace(VL_GLOBAL_CONV, ',', '.') as decimal(38,2))) FROM bronze.siconv_convenio",
-         "SELECT sum(cast(valor_global_convenio as decimal(38,2))) FROM silver.siconv_convenio",
-         Decimal("356856636504.87")),
+         "SELECT sum(cast(valor_global_convenio as decimal(38,2))) FROM silver.siconv_convenio"),
 
         ("Convênio - Valor Repasse",
          "SELECT sum(cast(replace(VL_REPASSE_CONV, ',', '.') as decimal(38,2))) FROM bronze.siconv_convenio",
-         "SELECT sum(cast(valor_repasse_convenio as decimal(38,2))) FROM silver.siconv_convenio",
-         Decimal("331287339337.88")),
+         "SELECT sum(cast(valor_repasse_convenio as decimal(38,2))) FROM silver.siconv_convenio"),
 
         ("Convênio - Valor Contrapartida",
          "SELECT sum(cast(replace(VL_CONTRAPARTIDA_CONV, ',', '.') as decimal(38,2))) FROM bronze.siconv_convenio",
-         "SELECT sum(cast(valor_contrapartida_convenio as decimal(38,2))) FROM silver.siconv_convenio",
-         Decimal("23710083216.75")),
+         "SELECT sum(cast(valor_contrapartida_convenio as decimal(38,2))) FROM silver.siconv_convenio"),
 
         ("Convênio - Valor Empenhado",
          "SELECT sum(cast(replace(VL_EMPENHADO_CONV, ',', '.') as decimal(38,2))) FROM bronze.siconv_convenio",
-         "SELECT sum(cast(valor_empenhado_convenio as decimal(38,2))) FROM silver.siconv_convenio",
-         Decimal("192071916388.96")),
+         "SELECT sum(cast(valor_empenhado_convenio as decimal(38,2))) FROM silver.siconv_convenio"),
 
         ("Convênio - Valor Desembolsado",
          "SELECT sum(cast(replace(VL_DESEMBOLSADO_CONV, ',', '.') as decimal(38,2))) FROM bronze.siconv_convenio",
-         "SELECT sum(cast(valor_desembolsado_convenio as decimal(38,2))) FROM silver.siconv_convenio",
-         Decimal("153212385725.46")),
+         "SELECT sum(cast(valor_desembolsado_convenio as decimal(38,2))) FROM silver.siconv_convenio"),
 
         ("Proposta - Valor Global",
          "SELECT sum(cast(replace(VL_GLOBAL_PROP, ',', '.') as decimal(38,2))) FROM bronze.siconv_proposta",
-         "SELECT sum(cast(valor_global_proposta as decimal(38,2))) FROM silver.siconv_proposta",
-         Decimal("1495209875334.42")),
+         "SELECT sum(cast(valor_global_proposta as decimal(38,2))) FROM silver.siconv_proposta"),
 
         ("Proposta - Valor Repasse",
          "SELECT sum(cast(replace(VL_REPASSE_PROP, ',', '.') as decimal(38,2))) FROM bronze.siconv_proposta",
-         "SELECT sum(cast(valor_repasse_proposta as decimal(38,2))) FROM silver.siconv_proposta",
-         Decimal("1425758135735.63")),
+         "SELECT sum(cast(valor_repasse_proposta as decimal(38,2))) FROM silver.siconv_proposta"),
 
         ("Proposta - Valor Contrapartida",
          "SELECT sum(cast(replace(VL_CONTRAPARTIDA_PROP, ',', '.') as decimal(38,2))) FROM bronze.siconv_proposta",
-         "SELECT sum(cast(valor_contrapartida_proposta as decimal(38,2))) FROM silver.siconv_proposta",
-         Decimal("69451779598.79"))
+         "SELECT sum(cast(valor_contrapartida_proposta as decimal(38,2))) FROM silver.siconv_proposta")
     ]
 
     all_passed = True
-    for label, b_sql, s_sql, expected_val in financial_checks:
+    for label, b_sql, s_sql in financial_checks:
         t0 = time.time()
         b_val = run_scalar_query(cur, b_sql)
         s_val = run_scalar_query(cur, s_sql)
@@ -315,15 +444,23 @@ def reconcile_financials(cur) -> bool:
         s_dec = Decimal(str(s_val)) if s_val is not None else Decimal("0.00")
         diff = s_dec - b_dec
 
-        matches_expected = (s_dec == expected_val)
         matches_bronze = (diff == Decimal("0.00"))
-        passed = matches_expected and matches_bronze
+        passed = matches_bronze
+
+        baseline_info = ""
+        if check_baseline:
+            expected_base = HISTORICAL_BASELINE["financials"].get(label)
+            if expected_base is not None:
+                matches_base = (s_dec == expected_base)
+                if not matches_base:
+                    passed = False
+                baseline_info = f" | Baseline=R$ {expected_base:,.2f} ({'MATCH' if matches_base else 'MISMATCH'})"
 
         if not passed:
             all_passed = False
 
         status = "PASS" if passed else "FAIL"
-        logger.info(f"[{status}] {label}: Bronze=R$ {b_dec:,.2f} | Silver=R$ {s_dec:,.2f} | Diff=R$ {diff:,.2f} ({elapsed:.2f}s)")
+        logger.info(f"[{status}] {label}: Bronze=R$ {b_dec:,.2f} | Silver=R$ {s_dec:,.2f} | Diff=R$ {diff:,.2f}{baseline_info} ({elapsed:.2f}s)")
 
     return all_passed
 
@@ -367,23 +504,33 @@ def reconcile_technical_lineage(cur) -> bool:
 
 
 def main():
-    logger.info("Iniciando auditoria completa e reconciliação Bronze -> Silver (R3-B)...")
+    parser = argparse.ArgumentParser(description="Auditoria e Reconciliação Bronze -> Silver (R3-B / R3-B.1).")
+    parser.add_argument("--check-baseline", action="store_true", help="Valida conformidade adicional contra o baseline do snapshot histórico (16/09/2026)")
+    parser.add_argument("--host", default="spark-thrift-server", help="Host do Spark Thrift Server")
+    parser.add_argument("--port", type=int, default=10000, help="Porta do Spark Thrift Server")
+    parser.add_argument("--user", default="airflow", help="Usuário do Spark Thrift Server")
+
+    args = parser.parse_args()
+
+    mode_str = "DINÂMICO + BASELINE HISTÓRICO" if args.check_baseline else "DINÂMICO (Padrão Lakehouse)"
+    logger.info(f"Iniciando reconciliação Bronze -> Silver no modo: {mode_str}...")
     start_time = time.time()
 
-    conn = get_connection()
+    conn = get_connection(host=args.host, port=args.port, user=args.user)
     cur = conn.cursor()
 
     results = {}
-    results["row_counts"] = reconcile_row_counts(cur)
+    results["row_counts"] = reconcile_row_counts(cur, check_baseline=args.check_baseline)
     results["key_uniqueness"] = reconcile_key_uniqueness(cur)
-    results["convenio_conflicts"] = reconcile_convenio_conflicts(cur)
-    results["referential_integrity"] = reconcile_referential_integrity(cur)
-    results["financials"] = reconcile_financials(cur)
+    results["convenio_conflicts"] = reconcile_convenio_conflicts(cur, check_baseline=args.check_baseline)
+    results["referential_integrity"] = reconcile_referential_integrity(cur, check_baseline=args.check_baseline)
+    results["financials"] = reconcile_financials(cur, check_baseline=args.check_baseline)
     results["technical_lineage"] = reconcile_technical_lineage(cur)
 
     total_elapsed = time.time() - start_time
     logger.info("=" * 60)
     logger.info(f"RESUMO FINAL DA RECONCILIAÇÃO (Duração total: {total_elapsed:.2f}s)")
+    logger.info(f"Modo de execução: {mode_str}")
     logger.info("=" * 60)
 
     overall_pass = True

@@ -77,6 +77,7 @@ services:
       - ./dbt_lakehouse/profiles.yml:/home/airflow/.dbt/profiles.yml
       - ./data:/data
       - ./spark:/opt/spark
+      - ./scripts:/scripts
     ports:
       - "8080:8080"
       - "8091:8091" # DBT Docs UI
