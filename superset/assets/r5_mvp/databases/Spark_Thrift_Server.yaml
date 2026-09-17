@@ -1,0 +1,17 @@
+database_name: Spark Thrift Server
+sqlalchemy_uri: hive://spark-thrift-server:10000/gold
+cache_timeout: null
+expose_in_sqllab: true
+allow_run_async: false
+allow_ctas: false
+allow_cvas: false
+allow_dml: false
+allow_file_upload: false
+extra:
+  metadata_params: {}
+  engine_params: {}
+  metadata_cache_timeout: {}
+  schemas_allowed_for_file_upload: []
+impersonate_user: false
+uuid: ac439d6e-e916-4d64-9fa5-bf50a52f8b5a
+version: 1.0.0

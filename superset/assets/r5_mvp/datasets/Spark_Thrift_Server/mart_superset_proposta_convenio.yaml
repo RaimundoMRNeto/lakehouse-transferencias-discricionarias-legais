@@ -1,0 +1,467 @@
+table_name: mart_superset_proposta_convenio
+main_dttm_col: data_proposta
+description: "Transfer\xEAncias \u2014 Propostas e Conv\xEAnios (Serving Mart Gold)"
+default_endpoint: null
+offset: 0
+cache_timeout: null
+catalog: null
+schema: gold
+sql: null
+params: null
+template_params: null
+filter_select_enabled: true
+fetch_values_predicate: null
+extra: null
+normalize_columns: false
+always_filter_main_dttm: false
+folders: null
+uuid: 9683733b-5c83-4892-95e2-ff935e972e12
+metrics:
+- metric_name: Percentual empenhado
+  verbose_name: null
+  metric_type: sum
+  expression: "CASE\n    WHEN SUM(valor_repasse_convenio) = 0 THEN NULL\n    ELSE\n\
+    \        100.0 * SUM(valor_empenhado_convenio)\n        / SUM(valor_repasse_convenio)\n\
+    END"
+  description: "Percentual empenhado em rela\xE7\xE3o ao valor total de repasse da\
+    \ Uni\xE3o."
+  d3format: null
+  currency: null
+  extra: null
+  warning_text: null
+- metric_name: Percentual desembolsado
+  verbose_name: null
+  metric_type: sum
+  expression: "CASE\n    WHEN SUM(valor_repasse_convenio) = 0 THEN NULL\n    ELSE\n\
+    \        100.0 * SUM(valor_desembolsado_convenio)\n        / SUM(valor_repasse_convenio)\n\
+    END"
+  description: "Percentual efetivamente desembolsado em rela\xE7\xE3o ao repasse pactuado."
+  d3format: null
+  currency: null
+  extra: null
+  warning_text: null
+- metric_name: "Propostas com conv\xEAnio (%)"
+  verbose_name: null
+  metric_type: count
+  expression: "CASE\n    WHEN COUNT(*) = 0 THEN NULL\n    ELSE\n        100.0 * COUNT(numero_convenio)\
+    \ / COUNT(*)\nEND"
+  description: "Propor\xE7\xE3o das propostas presentes no conjunto filtrado que possuem\
+    \ instrumento formalizado."
+  d3format: null
+  currency: null
+  extra: null
+  warning_text: null
+- metric_name: Valor global proposto
+  verbose_name: null
+  metric_type: sum
+  expression: SUM(valor_global_proposta)
+  description: Soma do valor global total de todas as propostas no conjunto filtrado.
+  d3format: null
+  currency: null
+  extra: null
+  warning_text: null
+- metric_name: Valor empenhado
+  verbose_name: null
+  metric_type: sum
+  expression: SUM(valor_empenhado_convenio)
+  description: "Soma do valor empenhado pelo Governo Federal nos conv\xEAnios formalizados."
+  d3format: null
+  currency: null
+  extra: null
+  warning_text: null
+- metric_name: Valor desembolsado
+  verbose_name: null
+  metric_type: sum
+  expression: SUM(valor_desembolsado_convenio)
+  description: Soma do valor financeiramente desembolsado / repassado aos convenentes.
+  d3format: null
+  currency: null
+  extra: null
+  warning_text: null
+- metric_name: "Conv\xEAnios formalizados"
+  verbose_name: null
+  metric_type: count
+  expression: COUNT(numero_convenio)
+  description: "Total de conv\xEAnios formalizados com n\xFAmero de instrumento emitido."
+  d3format: null
+  currency: null
+  extra: null
+  warning_text: null
+- metric_name: Valor global conveniado
+  verbose_name: null
+  metric_type: sum
+  expression: SUM(valor_global_convenio)
+  description: "Soma do valor global pactuado nos conv\xEAnios formalizados."
+  d3format: null
+  currency: null
+  extra: null
+  warning_text: null
+- metric_name: Propostas
+  verbose_name: null
+  metric_type: count
+  expression: COUNT(*)
+  description: "Total de propostas \xFAnicas submetidas no Siconv/Transferegov."
+  d3format: null
+  currency: null
+  extra: null
+  warning_text: null
+- metric_name: count
+  verbose_name: COUNT(*)
+  metric_type: count
+  expression: COUNT(*)
+  description: null
+  d3format: null
+  currency: null
+  extra: null
+  warning_text: null
+columns:
+- column_name: is_instrumento_ativo
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: BOOLEAN
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: ''
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: tem_convenio
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: BOOLEAN
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: ''
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: valor_contrapartida_proposta
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: DECIMAL
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: ''
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: valor_global_proposta
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: DECIMAL
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: ''
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: valor_repasse_proposta
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: DECIMAL
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: ''
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: valor_desembolsado_convenio
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: DECIMAL
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: ''
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: valor_global_convenio
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: DECIMAL
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: ''
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: valor_empenhado_convenio
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: DECIMAL
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: ''
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: valor_repasse_convenio
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: DECIMAL
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: ''
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: data_assinatura
+  verbose_name: null
+  is_dttm: true
+  is_active: true
+  type: TIMESTAMP
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: ''
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: data_proposta
+  verbose_name: null
+  is_dttm: true
+  is_active: true
+  type: TIMESTAMP
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: ''
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: id_proposta
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: BIGINT
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: ''
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: codigo_orgao_concedente
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: STRING
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: ''
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: codigo_orgao_superior
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: STRING
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: ''
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: codigo_municipio_ibge
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: STRING
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: ''
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: situacao_proposta
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: STRING
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: ''
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: identificacao_proponente
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: STRING
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: ''
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: situacao_convenio
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: STRING
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: ''
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: orgao_concedente
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: STRING
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: ''
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: orgao_superior
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: STRING
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: ''
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: numero_proposta
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: STRING
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: ''
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: numero_convenio
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: STRING
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: ''
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: nome_proponente
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: STRING
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: ''
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: modalidade
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: STRING
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: ''
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: municipio
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: STRING
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: ''
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: uf
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: STRING
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: ''
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: ano_assinatura
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: INT
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: ''
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: ano_proposta
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: INT
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: ''
+  description: null
+  python_date_format: null
+  extra: null
+- column_name: mes_proposta
+  verbose_name: null
+  is_dttm: false
+  is_active: true
+  type: INT
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: ''
+  description: null
+  python_date_format: null
+  extra: null
+version: 1.0.0
+database_uuid: ac439d6e-e916-4d64-9fa5-bf50a52f8b5a

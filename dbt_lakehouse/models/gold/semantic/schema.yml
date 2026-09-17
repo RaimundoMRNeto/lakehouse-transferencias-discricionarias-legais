@@ -1,0 +1,85 @@
+version: 2
+
+models:
+  - name: vw_superset_proposta_convenio
+    description: >
+      View semântica destinada ao consumo no Apache Superset, com grão de uma linha por proposta. Preserva propostas sem convênio mediante LEFT JOIN e utiliza exclusivamente relacionamentos que não multiplicam o grão.
+
+      Governança, Semântica e Restrições:
+      - Grão contratual: 1 linha por proposta (id_proposta).
+      - PK lógica: id_proposta.
+      - Origem principal: fct_proposta.
+      - Joins utilizados:
+          * fct_proposta -> dim_proponente (N:1 via identificacao_proponente)
+          * fct_proposta -> dim_municipio (N:1 via codigo_municipio_ibge)
+          * fct_proposta -> dim_orgao [superior] (N:1 via codigo_orgao_superior)
+          * fct_proposta -> dim_orgao [concedente] (N:1 via codigo_orgao)
+          * fct_proposta -> dim_data [proposta] (N:1 via data_proposta_sk)
+          * fct_proposta -> fct_convenio (1:0..1 via id_proposta, preservando propostas sem convênio via LEFT JOIN)
+          * fct_convenio -> dim_data [assinatura] (N:1 via data_assinatura_sk)
+      - Aditividade: Métricas de proposta (valor_global_proposta, valor_repasse_proposta, valor_contrapartida_proposta) e de convênio (valor_global_convenio, valor_repasse_convenio, valor_empenhado_convenio, valor_desembolsado_convenio) são perfeitamente aditivas no grão da proposta.
+      - Restrições contratuais explícitas:
+          * Programa não pertence à view devido à cardinalidade N:N.
+          * valor_saldo_conta não pertence à view por possuir natureza observacional não aditiva.
+    columns:
+      - name: id_proposta
+        description: "Identificador numérico único da proposta no Siconv / Transferegov (PK lógica da view)."
+        tests:
+          - not_null
+          - unique
+      - name: numero_proposta
+        description: "Número formatado da proposta."
+      - name: data_proposta
+        description: "Data civil de submissão da proposta."
+      - name: ano_proposta
+        description: "Ano civil de submissão da proposta."
+      - name: mes_proposta
+        description: "Mês civil (1-12) de submissão da proposta."
+      - name: identificacao_proponente
+        description: "CNPJ ou CPF de identificação do proponente."
+      - name: nome_proponente
+        description: "Nome ou razão social do proponente."
+      - name: codigo_municipio_ibge
+        description: "Código IBGE de 7 dígitos do município da proposta."
+      - name: municipio
+        description: "Nome do município informado na proposta."
+      - name: uf
+        description: "Sigla da Unidade Federativa da proposta."
+      - name: codigo_orgao_superior
+        description: "Código do órgão superior concedente."
+      - name: orgao_superior
+        description: "Denominação oficial do órgão superior concedente."
+      - name: codigo_orgao_concedente
+        description: "Código do órgão concedente executor."
+      - name: orgao_concedente
+        description: "Denominação oficial do órgão concedente executor."
+      - name: modalidade
+        description: "Modalidade do instrumento da proposta."
+      - name: situacao_proposta
+        description: "Situação cadastral / tramitação da proposta."
+      - name: valor_global_proposta
+        description: "Valor global total da proposta."
+      - name: valor_repasse_proposta
+        description: "Valor de repasse da União solicitado na proposta."
+      - name: valor_contrapartida_proposta
+        description: "Valor de contrapartida proposto."
+      - name: tem_convenio
+        description: "Flag booleano indicando se a proposta foi formalizada em convênio (TRUE) ou não (FALSE)."
+      - name: numero_convenio
+        description: "Número do convênio formalizado (Siconv / SIAFI). NULL se não formalizado."
+      - name: data_assinatura
+        description: "Data de assinatura do instrumento de convênio. NULL se não formalizado."
+      - name: ano_assinatura
+        description: "Ano civil de assinatura do instrumento de convênio. NULL se não formalizado."
+      - name: situacao_convenio
+        description: "Situação da execução do convênio. NULL se não formalizado."
+      - name: is_instrumento_ativo
+        description: "Flag indicando se o instrumento do convênio está atualmente ativo. NULL se não formalizado."
+      - name: valor_global_convenio
+        description: "Valor global formalizado no convênio. NULL se não formalizado."
+      - name: valor_repasse_convenio
+        description: "Valor de repasse da União conveniado. NULL se não formalizado."
+      - name: valor_empenhado_convenio
+        description: "Valor total empenhado no convênio. NULL se não formalizado."
+      - name: valor_desembolsado_convenio
+        description: "Valor total desembolsado / repassado ao convenente. NULL se não formalizado."

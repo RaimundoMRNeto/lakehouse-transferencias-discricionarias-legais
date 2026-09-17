@@ -1,0 +1,77 @@
+version: 2
+
+models:
+  - name: mart_superset_proposta_convenio
+    description: >
+      Tabela física de serving Delta da camada Gold para consumo no Apache Superset.
+      Materializa o resultado da view semântica vw_superset_proposta_convenio,
+      eliminando o overhead de 7 joins e recalculações em tempo de consulta,
+      proporcionando alta performance analítica e mitigação de concorrência no BI.
+
+      Governança:
+      - Grão: 1 linha por proposta (id_proposta).
+      - PK: id_proposta.
+      - Origem: ref('vw_superset_proposta_convenio').
+      - Formato: Delta Lake.
+    columns:
+      - name: id_proposta
+        description: "Identificador único da proposta (PK lógica)."
+        tests:
+          - not_null
+          - unique
+      - name: numero_proposta
+        description: "Número formatado da proposta."
+      - name: data_proposta
+        description: "Data civil da proposta."
+      - name: ano_proposta
+        description: "Ano civil da proposta."
+      - name: mes_proposta
+        description: "Mês civil da proposta."
+      - name: identificacao_proponente
+        description: "Identificação do proponente (CNPJ/CPF)."
+      - name: nome_proponente
+        description: "Nome do proponente."
+      - name: codigo_municipio_ibge
+        description: "Código IBGE do município."
+      - name: municipio
+        description: "Nome do município."
+      - name: uf
+        description: "Sigla da Unidade Federativa."
+      - name: codigo_orgao_superior
+        description: "Código do órgão superior."
+      - name: orgao_superior
+        description: "Nome do órgão superior."
+      - name: codigo_orgao_concedente
+        description: "Código do órgão concedente."
+      - name: orgao_concedente
+        description: "Nome do órgão concedente."
+      - name: modalidade
+        description: "Modalidade da proposta."
+      - name: situacao_proposta
+        description: "Situação cadastral da proposta."
+      - name: valor_global_proposta
+        description: "Valor global da proposta."
+      - name: valor_repasse_proposta
+        description: "Valor de repasse da proposta."
+      - name: valor_contrapartida_proposta
+        description: "Valor de contrapartida da proposta."
+      - name: tem_convenio
+        description: "Flag de formalização em convênio."
+      - name: numero_convenio
+        description: "Número do convênio formalizado."
+      - name: data_assinatura
+        description: "Data de assinatura do convênio."
+      - name: ano_assinatura
+        description: "Ano de assinatura do convênio."
+      - name: situacao_convenio
+        description: "Situação da execução do convênio."
+      - name: is_instrumento_ativo
+        description: "Flag de instrumento ativo."
+      - name: valor_global_convenio
+        description: "Valor global conveniado."
+      - name: valor_repasse_convenio
+        description: "Valor de repasse conveniado."
+      - name: valor_empenhado_convenio
+        description: "Valor empenhado no convênio."
+      - name: valor_desembolsado_convenio
+        description: "Valor desembolsado no convênio."

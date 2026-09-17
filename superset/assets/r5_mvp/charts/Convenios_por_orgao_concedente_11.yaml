@@ -1,0 +1,29 @@
+slice_name: "Conv\xEAnios por \xF3rg\xE3o concedente"
+description: null
+certified_by: null
+certification_details: null
+viz_type: echarts_timeseries_bar
+params:
+  datasource: 1__table
+  viz_type: echarts_timeseries_bar
+  x_axis: orgao_concedente
+  metrics:
+  - "Conv\xEAnios formalizados"
+  adhoc_filters:
+  - clause: WHERE
+    expressionType: SIMPLE
+    filterOptionName: filter_orgao_not_null
+    operator: IS NOT NULL
+    subject: orgao_concedente
+  order_desc: true
+  row_limit: 10
+  x_axis_title: "\xD3rg\xE3o Concedente"
+  y_axis_title: "Conv\xEAnios Formalizados"
+  y_axis_format: SMART_NUMBER
+  show_legend: false
+  extra_form_data: {}
+query_context: null
+cache_timeout: null
+uuid: 4fccfbe9-1118-4e60-9ea8-d266e182f22d
+version: 1.0.0
+dataset_uuid: 9683733b-5c83-4892-95e2-ff935e972e12
