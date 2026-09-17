@@ -4,7 +4,7 @@ models:
   - name: vw_superset_proposta_convenio
     description: >
       View semântica destinada ao consumo no Apache Superset, com grão de uma linha por proposta. Preserva propostas sem convênio mediante LEFT JOIN e utiliza exclusivamente relacionamentos que não multiplicam o grão.
-      
+
       Governança, Semântica e Restrições:
       - Grão contratual: 1 linha por proposta (id_proposta).
       - PK lógica: id_proposta.
