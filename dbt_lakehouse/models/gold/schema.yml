@@ -1,0 +1,410 @@
+version: 2
+
+models:
+  - name: dim_data
+    description: >
+      Dimensão de calendário da camada Gold (1990-01-01 a 2050-12-31).
+      Inclui 22.280 dias civis e 2 sentinelas:
+      -1 = Data Não Informada / NULL
+      -2 = Data Fora da Janela Analítica (< 1990 ou > 2050).
+      O valor -2 representa decisão da janela analítica de governança e não dado inválido na fonte.
+    columns:
+      - name: data_sk
+        description: "Chave primária semântica da data em formato YYYYMMDD ou sentinelas (-1, -2)."
+        tests:
+          - not_null
+          - unique
+      - name: data
+        description: "Data civil (DATE). NULL para sentinelas -1 e -2."
+      - name: ano
+        description: "Ano civil."
+      - name: mes
+        description: "Mês civil (1-12)."
+      - name: dia
+        description: "Dia do mês (1-31)."
+      - name: trimestre
+        description: "Trimestre do ano (1-4)."
+      - name: semestre
+        description: "Semestre do ano (1-2)."
+      - name: dia_semana
+        description: "Dia da semana numérico (1=Domingo ... 7=Sábado)."
+      - name: nome_mes
+        description: "Nome do mês por extenso em português ou descrição da sentinela."
+      - name: is_fim_de_semana
+        description: "Flag indicando se a data é sábado ou domingo."
+
+  - name: dim_proponente
+    description: >
+      Dimensão cadastral de proponentes da camada Gold.
+      Grão: 1 linha por identificacao_proponente (CNPJ ou CPF).
+      Chave primária natural direta identificacao_proponente.
+      Não utiliza heurísticas de desambiguação arbitrárias (ROW_NUMBER/MAX/MIN).
+    columns:
+      - name: identificacao_proponente
+        description: "Chave primária natural de identificação do proponente (CNPJ ou CPF)."
+        tests:
+          - not_null
+          - unique
+      - name: nome_proponente
+        description: "Nome ou razão social do proponente."
+      - name: codigo_municipio_ibge
+        description: "Código IBGE de 7 dígitos do município do proponente."
+      - name: municipio_proponente
+        description: "Nome do município do proponente."
+      - name: uf_proponente
+        description: "Sigla da Unidade Federativa do proponente."
+      - name: cep_proponente
+        description: "Código de Endereçamento Postal do proponente."
+      - name: endereco_proponente
+        description: "Logradouro e número do proponente."
+      - name: bairro_proponente
+        description: "Bairro do proponente."
+      - name: natureza_juridica
+        description: "Natureza jurídica da entidade proponente."
+
+  - name: dim_municipio
+    description: >
+      Dimensão geográfica de municípios da camada Gold, derivada das propostas observadas.
+      Grão: 1 linha por codigo_municipio_ibge (7 dígitos).
+      Chave primária natural direta codigo_municipio_ibge.
+    columns:
+      - name: codigo_municipio_ibge
+        description: "Código IBGE de 7 dígitos do município."
+        tests:
+          - not_null
+          - unique
+      - name: nome_municipio
+        description: "Nome do município informado na proposta."
+      - name: sigla_uf
+        description: "Sigla da Unidade Federativa (UF)."
+
+  - name: dim_orgao
+    description: >
+      Dimensão institucional de órgãos governamentais (concedentes e superiores) da camada Gold.
+      Grão: 1 linha por codigo_orgao.
+      Chave primária natural direta codigo_orgao.
+      Conformada através dos papéis de órgão superior e órgão concedente em propostas e programas.
+    columns:
+      - name: codigo_orgao
+        description: "Código numérico de identificação do órgão."
+        tests:
+          - not_null
+          - unique
+      - name: descricao_orgao
+        description: "Descrição / denominação oficial do órgão."
+        tests:
+          - not_null
+      - name: is_orgao_superior
+        description: "Flag indicando se o órgão atua como órgão superior."
+      - name: is_orgao_concedente
+        description: "Flag indicando se o órgão atua como órgão concedente."
+
+  - name: dim_programa
+    description: >
+      Dimensão de programas cadastrais da camada Gold.
+      Grão: 1 linha por id_programa.
+      Chave primária natural direta id_programa (não utilizar codigo_programa como PK).
+      Atenção: Relacionamento muitos-para-muitos (N:N) com propostas via bridge_programa_proposta.
+    columns:
+      - name: id_programa
+        description: "Chave primária natural direta de identificação do programa."
+        tests:
+          - not_null
+          - unique
+      - name: codigo_programa
+        description: "Código de negócio do programa (não único entre múltiplos id_programa)."
+      - name: nome_programa
+        description: "Nome oficial do programa."
+      - name: situacao_programa
+        description: "Situação cadastral do programa."
+      - name: ano_disponibilizacao
+        description: "Ano de disponibilização do programa."
+      - name: codigo_orgao_superior_programa
+        description: "Código do órgão superior gestor do programa."
+        tests:
+          - relationships:
+              arguments:
+                to: ref('dim_orgao')
+                field: codigo_orgao
+      - name: data_disponibilizacao_sk
+        description: "Chave de calendário da data de disponibilização (dim_data)."
+        tests:
+          - relationships:
+              arguments:
+                to: ref('dim_data')
+                field: data_sk
+
+  - name: fct_proposta
+    description: >
+      Tabela fato de propostas de trabalho para transferências da União na camada Gold.
+      Grão: 1 linha por id_proposta.
+      Chave primária natural direta id_proposta.
+      Medidas monetárias aditivas entre propostas no snapshot corrente.
+      Atenção: NÃO relacionar diretamente com bridge_programa_proposta sem agregação prévia.
+    columns:
+      - name: id_proposta
+        description: "Identificador numérico único da proposta no Transferegov."
+        tests:
+          - not_null
+          - unique
+      - name: identificacao_proponente
+        description: "Chave estrangeira para dim_proponente (CNPJ ou CPF)."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_proponente')
+                field: identificacao_proponente
+      - name: codigo_municipio_ibge
+        description: "Chave estrangeira para dim_municipio (Código IBGE de 7 dígitos)."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_municipio')
+                field: codigo_municipio_ibge
+      - name: codigo_orgao_superior
+        description: "Chave estrangeira para dim_orgao (papel: órgão superior)."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_orgao')
+                field: codigo_orgao
+      - name: codigo_orgao
+        description: "Chave estrangeira para dim_orgao (papel: órgão concedente)."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_orgao')
+                field: codigo_orgao
+      - name: data_proposta_sk
+        description: "Chave estrangeira para dim_data (data de apresentação da proposta)."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_data')
+                field: data_sk
+      - name: data_inicio_vigencia_proposta_sk
+        description: "Chave estrangeira para dim_data (data de início de vigência proposta)."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_data')
+                field: data_sk
+      - name: data_fim_vigencia_proposta_sk
+        description: "Chave estrangeira para dim_data (data de fim de vigência proposta)."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_data')
+                field: data_sk
+      - name: numero_proposta
+        description: "Número da proposta atribuído pelo concedente (atributo degenerado)."
+      - name: modalidade
+        description: "Modalidade de transferência (atributo degenerado)."
+      - name: situacao_proposta
+        description: "Situação cadastral da proposta (atributo degenerado)."
+      - name: objeto_proposta
+        description: "Descrição do objeto proposto (atributo degenerado)."
+      - name: nome_subtipo_proposta
+        description: "Nome do subtipo da proposta (atributo degenerado)."
+      - name: descricao_subtipo_proposta
+        description: "Descrição do subtipo da proposta (atributo degenerado)."
+      - name: quantidade_propostas
+        description: "Medida contábil unitária (sempre 1)."
+        tests:
+          - not_null
+      - name: valor_global_proposta
+        description: "Valor global proposto em reais (DECIMAL(17,2))."
+        tests:
+          - not_null
+      - name: valor_repasse_proposta
+        description: "Valor de repasse solicitado à União em reais (DECIMAL(17,2))."
+        tests:
+          - not_null
+      - name: valor_contrapartida_proposta
+        description: "Valor de contrapartida proposto pelo convenente em reais (DECIMAL(17,2))."
+        tests:
+          - not_null
+
+  - name: bridge_programa_proposta
+    description: >
+      Tabela ponte de associação N:N entre programas governamentais e propostas de trabalho.
+      Grão: 1 linha por par (id_programa, id_proposta).
+      Chave primária composta (id_programa, id_proposta).
+      ATENÇÃO CRÍTICA: Esta ponte NÃO é caminho aditivo para medidas financeiras.
+      É estritamente proibido somar valores monetários de propostas ou convênios através de programas,
+      pois geraria dupla ou múltipla contagem (cardinalidade N:N comprovada na fonte).
+      A ponte serve exclusivamente para contagem distinta de propostas/convênios por programa.
+    columns:
+      - name: id_programa
+        description: "Identificador numérico do programa governamental (FK dim_programa)."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_programa')
+                field: id_programa
+      - name: id_proposta
+        description: "Identificador numérico da proposta de trabalho."
+        tests:
+          - not_null
+
+  - name: fct_convenio
+    description: >
+      Tabela fato canônica de instrumentos jurídicos de convênios da camada Gold.
+      Grão: 1 linha por numero_convenio (instrumento jurídico canônico).
+      Chave primária natural direta numero_convenio.
+      Relação com proposta: exatamente 1:1 a partir do convênio (todo convênio referencia exatamente 1 proposta).
+      ATENÇÃO: A coluna valor_saldo_conta NÃO pertence a esta fato, pois apresenta divergências entre observações
+      da fonte para um mesmo número de convênio. Observações de saldo residem exclusivamente em fct_convenio_saldo_observacao.
+    columns:
+      - name: numero_convenio
+        description: "Número oficial e canônico do convênio no Transferegov."
+        tests:
+          - not_null
+          - unique
+      - name: id_proposta
+        description: "Chave estrangeira para fct_proposta (relação 1:1 estrita partindo de convênio)."
+        tests:
+          - not_null
+          - unique
+          - relationships:
+              arguments:
+                to: ref('fct_proposta')
+                field: id_proposta
+      - name: data_assinatura_sk
+        description: "Chave de calendário da data de assinatura do convênio (dim_data)."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_data')
+                field: data_sk
+      - name: data_publicacao_sk
+        description: "Chave de calendário da data de publicação do convênio (dim_data)."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_data')
+                field: data_sk
+      - name: data_inicio_vigencia_sk
+        description: "Chave de calendário da data de início de vigência do convênio (dim_data)."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_data')
+                field: data_sk
+      - name: data_fim_vigencia_sk
+        description: "Chave de calendário da data de fim de vigência do convênio (dim_data)."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_data')
+                field: data_sk
+      - name: data_limite_prestacao_contas_sk
+        description: "Chave de calendário da data limite de prestação de contas (dim_data)."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_data')
+                field: data_sk
+      - name: situacao_convenio
+        description: "Situação operacional do convênio (atributo degenerado)."
+      - name: subsituacao_convenio
+        description: "Subsituação operacional do convênio (atributo degenerado)."
+      - name: situacao_publicacao
+        description: "Situação de publicação no DOU (atributo degenerado)."
+      - name: situacao_contratacao
+        description: "Situação de contratação do instrumento (atributo degenerado)."
+      - name: is_instrumento_ativo
+        description: "Flag booleana indicando se o instrumento está ativo."
+      - name: is_opera_obtv
+        description: "Flag booleana indicando se opera Ordens Bancárias de Transferências Voluntárias."
+      - name: is_assinado
+        description: "Flag booleana indicando se o convênio foi assinado."
+      - name: numero_processo
+        description: "Número do processo administrativo no órgão concedente."
+      - name: unidade_gestora_emitente
+        description: "Código da Unidade Gestora emitente do instrumento."
+      - name: quantidade_convenios
+        description: "Medida unitária de contagem (sempre 1)."
+        tests:
+          - not_null
+      - name: quantidade_termos_aditivos
+        description: "Quantidade de termos aditivos celebrados."
+      - name: quantidade_prorrogacoes
+        description: "Quantidade de prorrogações de vigência realizadas."
+      - name: valor_global_convenio
+        description: "Valor total do convênio em reais (DECIMAL(17,2))."
+        tests:
+          - not_null
+      - name: valor_repasse_convenio
+        description: "Valor de repasse da União pactuado em reais (DECIMAL(17,2))."
+        tests:
+          - not_null
+      - name: valor_contrapartida_convenio
+        description: "Valor de contrapartida pactuado pelo convenente em reais (DECIMAL(17,2))."
+        tests:
+          - not_null
+      - name: valor_empenhado_convenio
+        description: "Valor total empenhado para o convênio em reais (DECIMAL(17,2))."
+      - name: valor_desembolsado_convenio
+        description: "Valor financeiro efetivamente desembolsado pela União em reais (DECIMAL(17,2))."
+      - name: valor_saldo_remanescente_tesouro
+        description: "Valor de saldo remanescente a devolver ao Tesouro Nacional (DECIMAL(17,2))."
+      - name: valor_saldo_remanescente_convenente
+        description: "Valor de saldo remanescente a devolver ao convenente (DECIMAL(17,2))."
+      - name: valor_rendimento_aplicacao
+        description: "Valor dos rendimentos de aplicações financeiras auferidos na conta (DECIMAL(17,2))."
+      - name: valor_ingresso_contrapartida
+        description: "Valor de contrapartida financeira efetivamente ingressado (DECIMAL(17,2))."
+      - name: valor_global_original_convenio
+        description: "Valor global original firmado na celebração inicial em reais (DECIMAL(17,2))."
+
+  - name: fct_convenio_saldo_observacao
+    description: >
+      Tabela fato observacional de saldos bancários e metadados físicos de convênios na camada Gold.
+      Grão: 1 linha por id_convenio_observacao (observação física do arquivo fonte).
+      Chave primária: id_convenio_observacao.
+      Chave estrangeira: numero_convenio referenciando fct_convenio.
+      SEMÂNTICA CRÍTICA: A coluna valor_saldo_conta é OBSERVACIONAL e NÃO ADITIVA.
+      Não deve ser exposta como métrica somável no consumo analítico, pois reflete divergências
+      conhecidas de snapshots e observações concorrentes da fonte.
+    columns:
+      - name: id_convenio_observacao
+        description: "Identificador unívoco da observação física do convênio no Lakehouse."
+        tests:
+          - not_null
+          - unique
+      - name: numero_convenio
+        description: "Chave estrangeira para o instrumento jurídico canônico (fct_convenio)."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fct_convenio')
+                field: numero_convenio
+      - name: valor_saldo_conta
+        description: "Valor de saldo em conta bancária (medida observacional, não aditiva)."
+      - name: source_conflict_count
+        description: "Contagem de observações concorrentes detectadas para o mesmo convênio na fonte."
+      - name: has_source_conflict
+        description: "Flag indicando se esta observação participou de divergência de atributos na fonte."
+      - name: __ingested_at_utc
+        description: "Timestamp UTC da ingestão técnica."
+      - name: __ingestion_run_id
+        description: "Identificador da execução de ingestão."
+      - name: __source_file
+        description: "Nome do arquivo CSV de origem no Transferegov."
+      - name: __source_sha256
+        description: "Hash SHA-256 do arquivo fonte para garantia de integridade e linhagem."
