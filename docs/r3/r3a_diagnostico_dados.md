@@ -57,10 +57,10 @@ A diretriz basilar do R3-A é: **NÃO PRESUMIR O MODELO DOS DADOS**. A investiga
   - Multiplicidade: Cada `ID_PROGRAMA` se repete em média 23,7 vezes, alcançando um máximo de **405 ocorrências** para um único `ID_PROGRAMA` (ex.: programas `45749`, `43096`, `43239`, `43108`, `14077`).
   - Inspeção dos atributos que variam para um mesmo `ID_PROGRAMA`: Os registros explodem pelas regras de habilitação/elegibilidade do programa por **Modalidade** (`MODALIDADE_PROGRAMA`), **Natureza Jurídica** (`NATUREZA_JURIDICA_PROGRAMA`), **UF** (`UF_PROGRAMA`) e **Ação Orçamentária** (`ACAO_ORCAMENTARIA`).
   - Exemplo: Programa `45749` aceita 3 modalidades, 5 naturezas jurídicas e 27 UFs ($3 \times 5 \times 27 = 405$ combinações).
-  - Teste de Unicidade Composta: A chave composta `(ID_PROGRAMA, MODALIDADE_PROGRAMA, NATUREZA_JURIDICA_PROGRAMA, UF_PROGRAMA, ACAO_ORCAMENTARIA)` possui **1.256.749** valores distintos para 1.257.350 linhas (99,95% do dataset). As 601 variações adicionais decorrem de múltiplos subtipos do programa.
+  - Teste de Unicidade Composta: A chave composta `(ID_PROGRAMA, MODALIDADE_PROGRAMA, NATUREZA_JURIDICA_PROGRAMA, UF_PROGRAMA, ACAO_ORCAMENTARIA)` possui exatamente **1.257.350** valores distintos para 1.257.350 linhas (100% de unicidade com tratamento de nulos/GROUP BY, **zero colisões**, multiplicidade máxima 1). A divergência de 601 registros observada em contagens ingênuas com `COUNT(DISTINCT)` decorria exclusivamente do descarte de linhas com valores nulos em `MODALIDADE_PROGRAMA` (600 nulos) e `ACAO_ORCAMENTARIA` (1 nulo). Além disso, a chave com 4 colunas `(ID_PROGRAMA, MODALIDADE_PROGRAMA, NATUREZA_JURIDICA_PROGRAMA, UF_PROGRAMA)` também é estritamente única (zero colisões).
   - Teste de Linhas Fisicamente Idênticas: O `COUNT(DISTINCT)` sobre TODAS as 20 colunas oficiais retornou exatamente **1.257.350**. Ou seja, **não existe duplicidade física completa**. Cada linha é um registro legítimo de elegibilidade de abertura de programa.
 - **Grão Comprovado:** Critério de elegibilidade e abertura regional/orçamentária do programa governamental.
-- **Recomendação de Modelagem:** Na Silver, manter o dataset íntegro ou separar em: (a) Dimensão Programa cadastral (grão `ID_PROGRAMA`) e (b) Tabela de Elegibilidade do Programa (grão composto). **Nunca deduplicar com `DISTINCT ID_PROGRAMA` arbitrariamente descartando as UFs e modalidades.**
+- **Recomendação de Modelagem:** Na Silver, manter o dataset íntegro de elegibilidade (chave natural composta comprovada, gerando surrogate key SHA-256) e criar a dimensão confirmada `silver.siconv_programa_cadastral` (grão 1:1 com `ID_PROGRAMA`, 53.018 linhas). **Nunca deduplicar com `DISTINCT ID_PROGRAMA` arbitrariamente descartando as UFs e modalidades.**
 
 ### 3.2. `siconv_programa_proposta`
 - **Evidência Empírica:**
@@ -138,7 +138,7 @@ Comparação do montante do campo `VL_GLOBAL_CONV` (Valor Global do Convênio):
 | :--- | :--- | :--- | :--- |
 | **Soma Real na Tabela de Origem (`siconv_convenio`)** | 287.586 | **R$ 356.856.636.504,87** | **1,000x (Base Real: ~356,8 bilhões)** |
 | **Soma após JOIN com `programa_proposta`** | 287.974 | **R$ 358.356.915.707,38** | **+ R$ 1,50 bilhão** (+0,42% de inflação indevida) |
-| **Soma após JOIN com `siconv_programa` (Raw Bronze)** | 24.243.823 | **R$ 25.963.722.686.239,21** | **72,76x (R$ 25,9 TRILHÕES / +7.176%)** |
+| **Soma após JOIN com `siconv_programa` (Raw Bronze)** | 24.243.823 | **R$ 25.963.722.686.298,16** | **72,7567x (R$ 25,9 TRILHÕES / +7.175,67%)** |
 
 **Conclusão Inegociável:**
 - Valores financeiros têm como grão estrito a **Proposta** e o **Convênio**.
@@ -338,7 +338,120 @@ Respondendo estritamente às 10 perguntas do Gate Crítico da Missão:
    - Indicadores 'SIM'/'NÃO' para `BOOLEAN`.
    - Documentos (CNPJ/CPF, CEP, Agência, Conta, IBGE) DEVEM ser tipados como `STRING` para não destruir zeros à esquerda.
 
-10. **Quais decisões ainda não possuem evidência suficiente?**
-    - Tratamento definitivo das 2 linhas duplicadas em `siconv_convenio` quanto a `VL_SALDO_CONTA` (desempate pelo maior saldo ou menor saldo, ou deduplicação arbitrária).
-    - Tratamento de corte para anos sentinelas anômalos (ex: ano 0001, 0006, 5008): se devem ser mantidos como datas válidas ou convertidos para `NULL` caso fora do intervalo histórico plausível (1990 a 2040).
-    - Se na Silver a tabela `siconv_programa` deve ser mantida com o grão composto original de elegibilidade ou desmembrada em dimensão de programa cadastral + tabela filha de critérios de elegibilidade.
+10. **Quais decisões foram fechadas no R3-A.1?**
+    - Tratamento definitivo dos 2 convênios conflitantes em `siconv_convenio`: preservação integral das 287.586 observações (sem deduplicação por falta de critério objetivo de recência).
+    - Unicidade de `siconv_programa`: comprovada 100% única na chave de 5 colunas (e também de 4 colunas). Chave surrogate recomendada via SHA-256.
+    - Entidade `programa_cadastral`: CONFIRMADA com dependência funcional 1:1 estrita para todos os 7 atributos em todos os 53.018 programas.
+    - Baseline financeiro: fixado estritamente em DECIMAL com cálculo de multiplicidades agregadas (sem materialização explosiva).
+
+---
+
+## 9. R3-A.1 — Fechamento dos Findings da Revisão Humana
+
+Em 17/09/2026, foi executada a investigação controlada e incremental (R3-A.1) para fechar formalmente as quatro ambiguidades remanescentes do R3-A antes do início do R3-B.
+
+### 9.1. Finding 1 — Identidade e Grão Final de `siconv_programa`
+
+- **Investigação:** Testou-se a presença de colisões na chave candidata de 5 colunas `(ID_PROGRAMA, MODALIDADE_PROGRAMA, NATUREZA_JURIDICA_PROGRAMA, UF_PROGRAMA, ACAO_ORCAMENTARIA)` e na chave de 4 colunas (sem `ACAO_ORCAMENTARIA`).
+- **Resultados Empíricos Observados:**
+  - Grupos de colisão (5 colunas): **0**
+  - Linhas envolvidas em colisão: **0**
+  - Multiplicidade máxima: **1**
+  - Unicidade comprovada: **1.257.350 combinações distintas em 1.257.350 linhas (100% de unicidade)**.
+  - Teste de minimalidade: A chave com 4 colunas `(ID_PROGRAMA, MODALIDADE_PROGRAMA, NATUREZA_JURIDICA_PROGRAMA, UF_PROGRAMA)` também apresentou **0 grupos de colisão** e unicidade estrita (1.257.350 distintos), demonstrando que a `ACAO_ORCAMENTARIA` possui relação 1:1 com a quádrupla programa/modalidade/natureza/UF.
+  - Esclarecimento técnico: A divergência de 601 registros registrada no profiling inicial ocorreu porque o `COUNT(DISTINCT a, b, c, d, e)` padrão do Spark descarta qualquer linha contendo pelo menos um valor `NULL`. Como `MODALIDADE_PROGRAMA` possui 600 nulos e `ACAO_ORCAMENTARIA` possui 1 nulo ($600 + 1 = 601$), tais registros foram excluídos da contagem de distintos agregada simples, simulando falsa colisão. Com agrupamento e tratamento de nulos (`GROUP BY` ou `CONCAT_WS` com `COALESCE`), a unicidade é absoluta.
+- **Decisão e Contrato:**
+  - **Identidade do Programa Lógico:** `id_programa` (53.018 distintos).
+  - **Identidade da Linha de Elegibilidade:** Chave natural composta pelas 5 colunas de elegibilidade.
+  - **Identidade Técnica Recomendada:** `id_programa_elegibilidade = sha256(concat_ws('||', coalesce(id_programa, ''), coalesce(modalidade_programa, ''), coalesce(natureza_juridica_programa, ''), coalesce(uf_programa, ''), coalesce(acao_orcamentaria, '')))`.
+  - **Proibição Estrita:** Não utilizar hash baseado em chaves comprovadamente não únicas e não utilizar MD5.
+
+### 9.2. Finding 2 — Tratamento Não Destrutivo dos Conflitos de `siconv_convenio`
+
+- **Investigação:** Inspeção exaustiva de todas as 40 colunas de negócio e 4 colunas técnicas nos dois instrumentos conflitantes:
+  - Convênio `949286` (linhas com saldo `9915.04` vs `9918.59`).
+  - Convênio `956078` (linhas com saldo `3164224.05` vs `3165629.92`).
+- **Resultados Empíricos Observados:**
+  - Mesmo `__ingestion_run_id`: **SIM** (`run_20260916T182321` em ambos).
+  - Mesmo `__source_sha256`: **SIM** (`4ba90760...` em ambos).
+  - Mesmo `__ingested_at_utc`: **SIM** (`2026-09-16T18:33:25.679585+00:00` em ambos).
+  - Mesmo `__source_file`: **SIM** (`siconv_convenio.zip` em ambos).
+  - Diferença em colunas temporais de negócio (`DIA_ASSIN_CONV`, `DIA_PUBL_CONV`, etc.): **NENHUMA** (datas 100% idênticas).
+  - Coluna divergente: **EXCLUSIVAMENTE `VL_SALDO_CONTA`**. Todas as outras 43 colunas são rigorosamente idênticas.
+- **Decisão e Contrato:**
+  - **Critério Temporal Objetivo:** **NÃO EXISTE CRITÉRIO OBJETIVO DE RECÊNCIA**. As duas linhas de cada convênio foram extraídas e disponibilizadas simultaneamente no mesmo arquivo oficial pelo Transferegov.
+  - **Deduplicação Comprovada:** **NÃO DEDUPLICAR**. É expressamente proibido arbitrar desempate escolhendo maior saldo, menor saldo ou aplicando `ROW_NUMBER()` aleatório.
+  - **Volume Silver Recomendado:** **287.586 linhas** (preservando integralmente as observações da Bronze).
+  - **Teste de Unicidade:** O teste `unique(numero_convenio)` **NÃO é teste obrigatório aprovado para o R3-B**.
+  - **Hipótese:** Oscilação de concorrência ou snapshots assíncronos na extração bancária do órgão concedente.
+
+### 9.3. Finding 3 — Baseline Financeiro Exato com DECIMAL
+
+- **Investigação:** Substituição da materialização explosiva de joins (proibida devido ao consumo excessivo de recursos e risco de OOM) pelo cálculo exato por meio de **multiplicidades agregadas**, utilizando precisão fixa `DECIMAL(38, 2)`:
+  - Base: `COUNT(*)` e `SUM(DECIMAL)` em `siconv_convenio`.
+  - Ponte (`siconv_programa_proposta`): Multiplicidade de programas por proposta ($\sum \text{qtd\_programas}$).
+  - Programa (`siconv_programa`): Multiplicidade física por programa cruzada com a ponte ($\sum \text{qtd\_linhas\_programa}$).
+- **Resultados Empíricos Observados:**
+  - **Soma Base (`siconv_convenio`):**
+    - Linhas base: **287.586**
+    - Soma DECIMAL: **R$ 356.856.636.504,87**
+    - Soma DOUBLE: R$ 356.856.636.504,87 (coincidente nesta granularidade)
+  - **Efeito da Ponte (`siconv_programa_proposta`):**
+    - Linhas equivalentes após join: **287.974** (+388 linhas, confirmação exata do baseline anterior)
+    - Soma DECIMAL: **R$ 358.356.915.707,38**
+    - Diferença absoluta: **+ R$ 1.500.279.202,51** (+0,420415% de distorção)
+  - **Efeito de `siconv_programa` (sem gerar fisicamente as ~24M linhas):**
+    - Linhas equivalentes após join: **24.243.823** (**confirmação exata da cardinalidade do R3-A por multiplicidade agregada em 9,78 segundos!**)
+    - Soma DECIMAL: **R$ 25.963.722.686.298,16**
+    - Diferença absoluta: **+ R$ 25.606.866.049.793,29**
+    - Fator multiplicativo: **72,7567x**
+  - **Comparação com DOUBLE anterior:** O valor em DOUBLE anteriormente calculado na revisão preliminar apresentava pequenas oscilações de arredondamento IEEE-754 na casa dos centavos (`.239,21` vs `.298,16`). O baseline oficial fica estritamente definido pela precisão exata de **DECIMAL(38, 2)**.
+- **Decisão e Contrato:**
+  - Transformação individual: `DECIMAL(17, 2)` (ou tipo de domínio adequado).
+  - Agregações e métricas de reconciliação: `DECIMAL(38, 2)` de precisão ampliada.
+  - Tipos `DOUBLE` e `FLOAT` ficam **estritamente proibidos** para reconciliação financeira.
+
+### 9.4. Finding 4 — Dependência Funcional e Confirmação de `programa_cadastral`
+
+- **Investigação:** Avaliação da dependência funcional dos atributos cadastrais de programa em relação a `ID_PROGRAMA` por meio de uma única agregação distribuída:
+  - `COD_ORGAO_SUP_PROGRAMA`
+  - `DESC_ORGAO_SUP_PROGRAMA`
+  - `COD_PROGRAMA`
+  - `NOME_PROGRAMA`
+  - `SIT_PROGRAMA`
+  - `DATA_DISPONIBILIZACAO`
+  - `ANO_DISPONIBILIZACAO`
+  - Assinatura da tupla cadastral completa.
+- **Resultados Empíricos Observados (53.018 `ID_PROGRAMA` analisados):**
+
+| Atributo Cadastral | IDs com > 1 Valor | Percentual | Máximo de Valores Distintos |
+| :--- | :--- | :--- | :--- |
+| `COD_ORGAO_SUP_PROGRAMA` | **0** | 0,0000% | 1 |
+| `DESC_ORGAO_SUP_PROGRAMA` | **0** | 0,0000% | 1 |
+| `COD_PROGRAMA` | **0** | 0,0000% | 1 |
+| `NOME_PROGRAMA` | **0** | 0,0000% | 1 |
+| `SIT_PROGRAMA` | **0** | 0,0000% | 1 |
+| `DATA_DISPONIBILIZACAO` | **0** | 0,0000% | 1 |
+| `ANO_DISPONIBILIZACAO` | **0** | 0,0000% | 1 |
+| **Tupla Cadastral Completa** | **0** | **0,0000%** | **1** |
+
+- **Decisão e Contrato:**
+  - **Dependência Funcional 1:1 Estrita:** **COMPROVADA**. Cada `ID_PROGRAMA` determina exatamente uma única tupla cadastral em 100% dos casos.
+  - **Classificação da Entidade:** **CONFIRMADO**. A criação da entidade `silver.siconv_programa_cadastral` (grão: 1 linha por `id_programa`, 53.018 linhas) é relacionalmente limpa, não requer funções arbitrárias de desempate (`FIRST`, `MAX`, `MIN`) e elimina redundâncias nos modelos subsequentes.
+
+### 9.5. Ajustes Menores de Governança
+
+1. **Serviços Docker:** O cluster ativo é composto por **9 serviços** no `docker compose ps`: `airflow`, `airflow-db`, `mc`, `minio`, `spark-master`, `spark-thrift-server`, `spark-worker-1`, `spark-worker-2` e `superset`.
+2. **Distinção de Cardinalidades de Programa:**
+   - Na relação lógica da ponte `siconv_programa_proposta` $\rightarrow$ Programa Cadastral: **N:1** (cada proposta aponta para programas lógicos únicos).
+   - Na junção direta da ponte com as linhas físicas de `siconv_programa`: **Multiplicativo catastrófico** (devido às regras de elegibilidade por UF/modalidade).
+3. **Tratamento de Datas Fora do Domínio Plausível:** O corte para anos `< 1990` ou `> 2050` permanece categorizado como **REGRA CANDIDATA** (não aplicar filtros destrutivos sem aprovação de negócio).
+4. **Transformação Segura de Booleanos:** Implementar via:
+   ```sql
+   CASE
+     WHEN UPPER(TRIM(valor)) = 'SIM' THEN TRUE
+     WHEN UPPER(TRIM(valor)) = 'NÃO' THEN FALSE
+     ELSE NULL
+   END
+   ```
+   Apenas para colunas cujo domínio tenha sido empiricamente auditado, nunca utilizando `ELSE FALSE`.
