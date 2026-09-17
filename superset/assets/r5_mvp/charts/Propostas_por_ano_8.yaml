@@ -1,0 +1,30 @@
+slice_name: Propostas por ano
+description: null
+certified_by: null
+certification_details: null
+viz_type: echarts_timeseries_bar
+params:
+  datasource: 1__table
+  viz_type: echarts_timeseries_bar
+  x_axis: ano_proposta
+  metrics:
+  - Propostas
+  adhoc_filters:
+  - clause: WHERE
+    expressionType: SIMPLE
+    filterOptionName: filter_ano_prop_not_null
+    operator: IS NOT NULL
+    subject: ano_proposta
+  x_axis_sort_asc: true
+  order_desc: false
+  x_axis_title: Ano da Proposta
+  y_axis_title: Quantidade de Propostas
+  y_axis_format: SMART_NUMBER
+  row_limit: 100
+  show_legend: false
+  extra_form_data: {}
+query_context: null
+cache_timeout: null
+uuid: 01c9da02-f6f0-4bd8-8ff2-ed34fc0440de
+version: 1.0.0
+dataset_uuid: 9683733b-5c83-4892-95e2-ff935e972e12

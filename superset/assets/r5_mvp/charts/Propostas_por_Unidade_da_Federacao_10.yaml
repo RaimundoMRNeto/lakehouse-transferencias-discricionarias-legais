@@ -1,0 +1,29 @@
+slice_name: "Propostas por Unidade da Federa\xE7\xE3o"
+description: null
+certified_by: null
+certification_details: null
+viz_type: echarts_timeseries_bar
+params:
+  datasource: 1__table
+  viz_type: echarts_timeseries_bar
+  x_axis: uf
+  metrics:
+  - Propostas
+  adhoc_filters:
+  - clause: WHERE
+    expressionType: SIMPLE
+    filterOptionName: filter_uf_not_null
+    operator: IS NOT NULL
+    subject: uf
+  order_desc: true
+  x_axis_title: Unidade Federativa (UF)
+  y_axis_title: Quantidade de Propostas
+  y_axis_format: SMART_NUMBER
+  row_limit: 30
+  show_legend: false
+  extra_form_data: {}
+query_context: null
+cache_timeout: null
+uuid: c2db1ae1-b0fa-4142-8b41-7288a2e453a3
+version: 1.0.0
+dataset_uuid: 9683733b-5c83-4892-95e2-ff935e972e12

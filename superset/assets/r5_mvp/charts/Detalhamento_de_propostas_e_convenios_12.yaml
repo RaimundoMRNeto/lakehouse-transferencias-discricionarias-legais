@@ -1,0 +1,36 @@
+slice_name: "Detalhamento de propostas e conv\xEAnios"
+description: null
+certified_by: null
+certification_details: null
+viz_type: table
+params:
+  datasource: 1__table
+  viz_type: table
+  query_mode: raw
+  all_columns:
+  - numero_proposta
+  - nome_proponente
+  - uf
+  - municipio
+  - orgao_concedente
+  - modalidade
+  - situacao_proposta
+  - numero_convenio
+  - situacao_convenio
+  - valor_global_proposta
+  - valor_global_convenio
+  - valor_empenhado_convenio
+  - valor_desembolsado_convenio
+  adhoc_filters: []
+  row_limit: 1000
+  page_length: 25
+  server_page_length: 25
+  order_desc: true
+  show_cell_bars: false
+  allow_render_html: true
+  extra_form_data: {}
+query_context: null
+cache_timeout: null
+uuid: e9f1418e-49a5-4c46-8f8a-c8b5dd9f6e82
+version: 1.0.0
+dataset_uuid: 9683733b-5c83-4892-95e2-ff935e972e12

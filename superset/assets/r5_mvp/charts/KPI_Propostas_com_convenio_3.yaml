@@ -1,0 +1,20 @@
+slice_name: "KPI \u2014 Propostas com conv\xEAnio (%)"
+description: null
+certified_by: null
+certification_details: null
+viz_type: big_number_total
+params:
+  datasource: 1__table
+  viz_type: big_number_total
+  metric: "Propostas com conv\xEAnio (%)"
+  subheader: "Taxa de formaliza\xE7\xE3o"
+  header_font_size: 0.4
+  subheader_font_size: 0.15
+  y_axis_format: ',.2f'
+  time_range: No filter
+  extra_form_data: {}
+query_context: null
+cache_timeout: null
+uuid: ae18f83c-0515-4fd4-9991-98d542f79909
+version: 1.0.0
+dataset_uuid: 9683733b-5c83-4892-95e2-ff935e972e12

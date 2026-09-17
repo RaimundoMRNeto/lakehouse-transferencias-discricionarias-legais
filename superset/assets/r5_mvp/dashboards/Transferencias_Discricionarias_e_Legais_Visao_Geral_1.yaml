@@ -1,0 +1,588 @@
+dashboard_title: "Transfer\xEAncias Discricion\xE1rias e Legais \u2014 Vis\xE3o Geral"
+description: null
+css: null
+slug: transferencias-visao-geral
+certified_by: null
+certification_details: null
+published: true
+uuid: 91916332-ca1a-4fea-976c-27d3a4aab139
+position:
+  DASHBOARD_VERSION_KEY: v2
+  ROOT_ID:
+    children:
+    - GRID_ID
+    id: ROOT_ID
+    type: ROOT
+  HEADER_ID:
+    id: HEADER_ID
+    meta:
+      text: "Transfer\xEAncias Discricion\xE1rias e Legais \u2014 Vis\xE3o Geral"
+    type: HEADER
+  GRID_ID:
+    children:
+    - ROW-kpi-volumes
+    - ROW-kpi-valores
+    - ROW-charts-ano
+    - ROW-charts-ranking
+    - ROW-tabela-detalhada
+    id: GRID_ID
+    parents:
+    - ROOT_ID
+    type: GRID
+  ROW-kpi-volumes:
+    children:
+    - CHART-1
+    - CHART-2
+    - CHART-3
+    id: ROW-kpi-volumes
+    meta:
+      background: BACKGROUND_TRANSPARENT
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    type: ROW
+  ROW-kpi-valores:
+    children:
+    - CHART-4
+    - CHART-5
+    - CHART-6
+    - CHART-7
+    id: ROW-kpi-valores
+    meta:
+      background: BACKGROUND_TRANSPARENT
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    type: ROW
+  ROW-charts-ano:
+    children:
+    - CHART-8
+    - CHART-9
+    id: ROW-charts-ano
+    meta:
+      background: BACKGROUND_TRANSPARENT
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    type: ROW
+  ROW-charts-ranking:
+    children:
+    - CHART-10
+    - CHART-11
+    id: ROW-charts-ranking
+    meta:
+      background: BACKGROUND_TRANSPARENT
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    type: ROW
+  ROW-tabela-detalhada:
+    children:
+    - CHART-12
+    id: ROW-tabela-detalhada
+    meta:
+      background: BACKGROUND_TRANSPARENT
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    type: ROW
+  CHART-1:
+    children: []
+    id: CHART-1
+    meta:
+      chartId: 1
+      height: 25
+      sliceName: "KPI \u2014 Propostas"
+      uuid: be055a73-4e95-4469-b4c8-f6ca3569bd27
+      width: 4
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-kpi-volumes
+    type: CHART
+  CHART-2:
+    children: []
+    id: CHART-2
+    meta:
+      chartId: 2
+      height: 25
+      sliceName: "KPI \u2014 Conv\xEAnios formalizados"
+      uuid: 717f3bbe-3faf-4667-aedd-95cdb207c3e9
+      width: 4
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-kpi-volumes
+    type: CHART
+  CHART-3:
+    children: []
+    id: CHART-3
+    meta:
+      chartId: 3
+      height: 25
+      sliceName: "KPI \u2014 Propostas com conv\xEAnio (%)"
+      uuid: ae18f83c-0515-4fd4-9991-98d542f79909
+      width: 4
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-kpi-volumes
+    type: CHART
+  CHART-4:
+    children: []
+    id: CHART-4
+    meta:
+      chartId: 4
+      height: 25
+      sliceName: "KPI \u2014 Valor global proposto"
+      uuid: f916ec12-de9f-488d-97fc-fb88b6dca7c3
+      width: 3
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-kpi-valores
+    type: CHART
+  CHART-5:
+    children: []
+    id: CHART-5
+    meta:
+      chartId: 5
+      height: 25
+      sliceName: "KPI \u2014 Valor global conveniado"
+      uuid: 3cb03cd1-52b2-459f-964e-969505a589b9
+      width: 3
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-kpi-valores
+    type: CHART
+  CHART-6:
+    children: []
+    id: CHART-6
+    meta:
+      chartId: 6
+      height: 25
+      sliceName: "KPI \u2014 Valor empenhado"
+      uuid: 06c6a987-5644-4449-8fb0-985d2798a5a4
+      width: 3
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-kpi-valores
+    type: CHART
+  CHART-7:
+    children: []
+    id: CHART-7
+    meta:
+      chartId: 7
+      height: 25
+      sliceName: "KPI \u2014 Valor desembolsado"
+      uuid: 0d3d0f9a-8596-479f-9bd4-e308a1ae41bc
+      width: 3
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-kpi-valores
+    type: CHART
+  CHART-8:
+    children: []
+    id: CHART-8
+    meta:
+      chartId: 8
+      height: 50
+      sliceName: Propostas por ano
+      uuid: 01c9da02-f6f0-4bd8-8ff2-ed34fc0440de
+      width: 6
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-charts-ano
+    type: CHART
+  CHART-9:
+    children: []
+    id: CHART-9
+    meta:
+      chartId: 9
+      height: 50
+      sliceName: "Conv\xEAnios formalizados por ano"
+      uuid: 8256cb84-aa55-4c9a-b65c-b5a419443997
+      width: 6
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-charts-ano
+    type: CHART
+  CHART-10:
+    children: []
+    id: CHART-10
+    meta:
+      chartId: 10
+      height: 50
+      sliceName: "Propostas por Unidade da Federa\xE7\xE3o"
+      uuid: c2db1ae1-b0fa-4142-8b41-7288a2e453a3
+      width: 6
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-charts-ranking
+    type: CHART
+  CHART-11:
+    children: []
+    id: CHART-11
+    meta:
+      chartId: 11
+      height: 50
+      sliceName: "Conv\xEAnios por \xF3rg\xE3o concedente"
+      uuid: 4fccfbe9-1118-4e60-9ea8-d266e182f22d
+      width: 6
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-charts-ranking
+    type: CHART
+  CHART-12:
+    children: []
+    id: CHART-12
+    meta:
+      chartId: 12
+      height: 60
+      sliceName: "Detalhamento de propostas e conv\xEAnios"
+      uuid: e9f1418e-49a5-4c46-8f8a-c8b5dd9f6e82
+      width: 12
+    parents:
+    - ROOT_ID
+    - GRID_ID
+    - ROW-tabela-detalhada
+    type: CHART
+metadata:
+  color_scheme: supersetColors
+  cross_filters_enabled: true
+  native_filter_configuration:
+  - id: NATIVE_FILTER-ano_proposta
+    name: Ano da proposta
+    filterType: filter_select
+    targets:
+    - datasetUuid: 9683733b-5c83-4892-95e2-ff935e972e12
+      column:
+        name: ano_proposta
+    defaultDataMask:
+      extraFormData: {}
+      filterState: {}
+      ownState: {}
+    controlValues:
+      enableEmptyFilter: false
+      defaultToFirstItem: false
+      multiSelect: true
+      searchAllOptions: true
+      inverseSelection: false
+    cascadeParentIds: []
+    scope:
+      rootPath:
+      - ROOT_ID
+      excluded: []
+    type: NATIVE_FILTER
+    description: Filtrar registros por Ano da proposta
+    chartsInScope:
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    tabsInScope: []
+  - id: NATIVE_FILTER-ano_assinatura
+    name: Ano da assinatura
+    filterType: filter_select
+    targets:
+    - datasetUuid: 9683733b-5c83-4892-95e2-ff935e972e12
+      column:
+        name: ano_assinatura
+    defaultDataMask:
+      extraFormData: {}
+      filterState: {}
+      ownState: {}
+    controlValues:
+      enableEmptyFilter: false
+      defaultToFirstItem: false
+      multiSelect: true
+      searchAllOptions: true
+      inverseSelection: false
+    cascadeParentIds: []
+    scope:
+      rootPath:
+      - ROOT_ID
+      excluded: []
+    type: NATIVE_FILTER
+    description: Filtrar registros por Ano da assinatura
+    chartsInScope:
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    tabsInScope: []
+  - id: NATIVE_FILTER-uf
+    name: UF
+    filterType: filter_select
+    targets:
+    - datasetUuid: 9683733b-5c83-4892-95e2-ff935e972e12
+      column:
+        name: uf
+    defaultDataMask:
+      extraFormData: {}
+      filterState: {}
+      ownState: {}
+    controlValues:
+      enableEmptyFilter: false
+      defaultToFirstItem: false
+      multiSelect: true
+      searchAllOptions: true
+      inverseSelection: false
+    cascadeParentIds: []
+    scope:
+      rootPath:
+      - ROOT_ID
+      excluded: []
+    type: NATIVE_FILTER
+    description: Filtrar registros por UF
+    chartsInScope:
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    tabsInScope: []
+  - id: NATIVE_FILTER-municipio
+    name: "Munic\xEDpio"
+    filterType: filter_select
+    targets:
+    - datasetUuid: 9683733b-5c83-4892-95e2-ff935e972e12
+      column:
+        name: municipio
+    defaultDataMask:
+      extraFormData: {}
+      filterState: {}
+      ownState: {}
+    controlValues:
+      enableEmptyFilter: false
+      defaultToFirstItem: false
+      multiSelect: true
+      searchAllOptions: true
+      inverseSelection: false
+    cascadeParentIds: []
+    scope:
+      rootPath:
+      - ROOT_ID
+      excluded: []
+    type: NATIVE_FILTER
+    description: "Filtrar registros por Munic\xEDpio"
+    chartsInScope:
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    tabsInScope: []
+  - id: NATIVE_FILTER-orgao_concedente
+    name: "\xD3rg\xE3o concedente"
+    filterType: filter_select
+    targets:
+    - datasetUuid: 9683733b-5c83-4892-95e2-ff935e972e12
+      column:
+        name: orgao_concedente
+    defaultDataMask:
+      extraFormData: {}
+      filterState: {}
+      ownState: {}
+    controlValues:
+      enableEmptyFilter: false
+      defaultToFirstItem: false
+      multiSelect: true
+      searchAllOptions: true
+      inverseSelection: false
+    cascadeParentIds: []
+    scope:
+      rootPath:
+      - ROOT_ID
+      excluded: []
+    type: NATIVE_FILTER
+    description: "Filtrar registros por \xD3rg\xE3o concedente"
+    chartsInScope:
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    tabsInScope: []
+  - id: NATIVE_FILTER-modalidade
+    name: Modalidade
+    filterType: filter_select
+    targets:
+    - datasetUuid: 9683733b-5c83-4892-95e2-ff935e972e12
+      column:
+        name: modalidade
+    defaultDataMask:
+      extraFormData: {}
+      filterState: {}
+      ownState: {}
+    controlValues:
+      enableEmptyFilter: false
+      defaultToFirstItem: false
+      multiSelect: true
+      searchAllOptions: true
+      inverseSelection: false
+    cascadeParentIds: []
+    scope:
+      rootPath:
+      - ROOT_ID
+      excluded: []
+    type: NATIVE_FILTER
+    description: Filtrar registros por Modalidade
+    chartsInScope:
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    tabsInScope: []
+  - id: NATIVE_FILTER-situacao_proposta
+    name: "Situa\xE7\xE3o da proposta"
+    filterType: filter_select
+    targets:
+    - datasetUuid: 9683733b-5c83-4892-95e2-ff935e972e12
+      column:
+        name: situacao_proposta
+    defaultDataMask:
+      extraFormData: {}
+      filterState: {}
+      ownState: {}
+    controlValues:
+      enableEmptyFilter: false
+      defaultToFirstItem: false
+      multiSelect: true
+      searchAllOptions: true
+      inverseSelection: false
+    cascadeParentIds: []
+    scope:
+      rootPath:
+      - ROOT_ID
+      excluded: []
+    type: NATIVE_FILTER
+    description: "Filtrar registros por Situa\xE7\xE3o da proposta"
+    chartsInScope:
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    tabsInScope: []
+  - id: NATIVE_FILTER-situacao_convenio
+    name: "Situa\xE7\xE3o do conv\xEAnio"
+    filterType: filter_select
+    targets:
+    - datasetUuid: 9683733b-5c83-4892-95e2-ff935e972e12
+      column:
+        name: situacao_convenio
+    defaultDataMask:
+      extraFormData: {}
+      filterState: {}
+      ownState: {}
+    controlValues:
+      enableEmptyFilter: false
+      defaultToFirstItem: false
+      multiSelect: true
+      searchAllOptions: true
+      inverseSelection: false
+    cascadeParentIds: []
+    scope:
+      rootPath:
+      - ROOT_ID
+      excluded: []
+    type: NATIVE_FILTER
+    description: "Filtrar registros por Situa\xE7\xE3o do conv\xEAnio"
+    chartsInScope:
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    tabsInScope: []
+  chart_configuration: {}
+  global_chart_configuration:
+    scope:
+      rootPath:
+      - ROOT_ID
+      excluded: []
+    chartsInScope:
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+  color_scheme_domain: []
+  expanded_slices: {}
+  refresh_frequency: 0
+  timed_refresh_immune_slices: []
+version: 1.0.0

@@ -1,0 +1,30 @@
+slice_name: "Conv\xEAnios formalizados por ano"
+description: null
+certified_by: null
+certification_details: null
+viz_type: echarts_timeseries_bar
+params:
+  datasource: 1__table
+  viz_type: echarts_timeseries_bar
+  x_axis: ano_assinatura
+  metrics:
+  - "Conv\xEAnios formalizados"
+  adhoc_filters:
+  - clause: WHERE
+    expressionType: SIMPLE
+    filterOptionName: filter_ano_ass_not_null
+    operator: IS NOT NULL
+    subject: ano_assinatura
+  x_axis_sort_asc: true
+  order_desc: false
+  x_axis_title: Ano de Assinatura
+  y_axis_title: "Conv\xEAnios Formalizados"
+  y_axis_format: SMART_NUMBER
+  row_limit: 100
+  show_legend: false
+  extra_form_data: {}
+query_context: null
+cache_timeout: null
+uuid: 8256cb84-aa55-4c9a-b65c-b5a419443997
+version: 1.0.0
+dataset_uuid: 9683733b-5c83-4892-95e2-ff935e972e12

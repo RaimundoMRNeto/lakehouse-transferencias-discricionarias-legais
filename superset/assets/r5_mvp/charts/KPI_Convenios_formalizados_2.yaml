@@ -1,0 +1,20 @@
+slice_name: "KPI \u2014 Conv\xEAnios formalizados"
+description: null
+certified_by: null
+certification_details: null
+viz_type: big_number_total
+params:
+  datasource: 1__table
+  viz_type: big_number_total
+  metric: "Conv\xEAnios formalizados"
+  subheader: Instrumentos formalizados
+  header_font_size: 0.4
+  subheader_font_size: 0.15
+  y_axis_format: SMART_NUMBER
+  time_range: No filter
+  extra_form_data: {}
+query_context: null
+cache_timeout: null
+uuid: 717f3bbe-3faf-4667-aedd-95cdb207c3e9
+version: 1.0.0
+dataset_uuid: 9683733b-5c83-4892-95e2-ff935e972e12
