@@ -26,5 +26,5 @@ e legais.
 - **R2** — Ingestão e camada Bronze dos dados oficiais do Transferegov (concluído / merged).
 - **R3** — Camada Silver implementada e validada (concluído / merged).
 - **R4-A / R4-A.1** — Descoberta analítica, modelagem dimensional e contratos aprovados (concluído).
-- **R4-B** — Camada Gold materializada em Delta Lake via dbt + Spark (5 dimensões confirmadas, 3 fatos, 1 bridge, 11 gates de reconciliação dinâmica aprovados com R$ 0,00 de divergência, 81 testes dbt e idempotência comprovada) — aguardando revisão humana na branch `feat/r4b-camada-gold`.
+- **R4-B / R4-B.1** — Camada Gold materializada em Delta Lake via dbt + Spark (5 dimensões confirmadas, 3 fatos, 1 bridge, 12 gates de reconciliação dinâmica aprovados com R$ 0,00 de divergência, dbt build com 81/81 checks PASS, rastreabilidade e baseline validados) — aguardando revisão humana na branch `feat/r4b-camada-gold`.
 

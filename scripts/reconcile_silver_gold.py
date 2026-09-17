@@ -407,6 +407,116 @@ def reconcile_date_mapping(cur) -> bool:
     return all_passed
 
 
+def reconcile_date_mapping_exact(cur) -> bool:
+    logger.info("=" * 70)
+    logger.info("5.1. VALIDAÇÃO EXATA DE MAPEAMENTO DE DATAS (SILVER -> GOLD)")
+    logger.info("=" * 70)
+    all_passed = True
+
+    # 1. dim_programa: data_disponibilizacao -> data_disponibilizacao_sk
+    t0 = time.time()
+    cur.execute("""
+        SELECT count(*)
+        FROM silver.siconv_programa_cadastral s
+        JOIN gold.dim_programa g ON s.id_programa = g.id_programa
+        WHERE g.data_disponibilizacao_sk != (
+            CASE
+                WHEN s.data_disponibilizacao IS NULL THEN -1
+                WHEN s.data_disponibilizacao < DATE '1990-01-01' OR s.data_disponibilizacao > DATE '2050-12-31' THEN -2
+                ELSE CAST(DATE_FORMAT(s.data_disponibilizacao, 'yyyyMMdd') AS INT)
+            END
+        )
+    """)
+    prog_diff = cur.fetchall()[0][0]
+    elapsed = time.time() - t0
+    is_ok = (prog_diff == 0)
+    if not is_ok:
+        all_passed = False
+    logger.info(f"[{'PASS' if is_ok else 'FAIL'}] Exact Date dim_programa.data_disponibilizacao_sk: Divergências={prog_diff} ({elapsed:.2f}s)")
+
+    # 2. fct_proposta: proposta, inicio_vigencia, fim_vigencia
+    t0 = time.time()
+    cur.execute("""
+        SELECT
+            SUM(CASE WHEN g.data_proposta_sk != (
+                CASE WHEN s.data_proposta IS NULL THEN -1
+                     WHEN s.data_proposta < DATE '1990-01-01' OR s.data_proposta > DATE '2050-12-31' THEN -2
+                     ELSE CAST(DATE_FORMAT(s.data_proposta, 'yyyyMMdd') AS INT) END
+            ) THEN 1 ELSE 0 END),
+            SUM(CASE WHEN g.data_inicio_vigencia_proposta_sk != (
+                CASE WHEN s.data_inicio_vigencia_proposta IS NULL THEN -1
+                     WHEN s.data_inicio_vigencia_proposta < DATE '1990-01-01' OR s.data_inicio_vigencia_proposta > DATE '2050-12-31' THEN -2
+                     ELSE CAST(DATE_FORMAT(s.data_inicio_vigencia_proposta, 'yyyyMMdd') AS INT) END
+            ) THEN 1 ELSE 0 END),
+            SUM(CASE WHEN g.data_fim_vigencia_proposta_sk != (
+                CASE WHEN s.data_fim_vigencia_proposta IS NULL THEN -1
+                     WHEN s.data_fim_vigencia_proposta < DATE '1990-01-01' OR s.data_fim_vigencia_proposta > DATE '2050-12-31' THEN -2
+                     ELSE CAST(DATE_FORMAT(s.data_fim_vigencia_proposta, 'yyyyMMdd') AS INT) END
+            ) THEN 1 ELSE 0 END)
+        FROM silver.siconv_proposta s
+        JOIN gold.fct_proposta g ON s.id_proposta = g.id_proposta
+    """)
+    prop_diffs = cur.fetchall()[0]
+    elapsed = time.time() - t0
+    prop_total_diff = sum(prop_diffs)
+    is_ok = (prop_total_diff == 0)
+    if not is_ok:
+        all_passed = False
+    logger.info(f"[{'PASS' if is_ok else 'FAIL'}] Exact Date fct_proposta (proposta={prop_diffs[0]}, inicio={prop_diffs[1]}, fim={prop_diffs[2]}): Divergências={prop_total_diff} ({elapsed:.2f}s)")
+
+    # 3. fct_convenio: assinatura, publicacao, inicio_vigencia, fim_vigencia, limite_prestacao_contas
+    t0 = time.time()
+    cur.execute("""
+        WITH canonical AS (
+            SELECT DISTINCT
+                numero_convenio,
+                data_assinatura_convenio,
+                data_publicacao_convenio,
+                data_inicio_vigencia_convenio,
+                data_fim_vigencia_convenio,
+                data_limite_prestacao_contas
+            FROM silver.siconv_convenio
+        )
+        SELECT
+            SUM(CASE WHEN g.data_assinatura_sk != (
+                CASE WHEN s.data_assinatura_convenio IS NULL THEN -1
+                     WHEN s.data_assinatura_convenio < DATE '1990-01-01' OR s.data_assinatura_convenio > DATE '2050-12-31' THEN -2
+                     ELSE CAST(DATE_FORMAT(s.data_assinatura_convenio, 'yyyyMMdd') AS INT) END
+            ) THEN 1 ELSE 0 END),
+            SUM(CASE WHEN g.data_publicacao_sk != (
+                CASE WHEN s.data_publicacao_convenio IS NULL THEN -1
+                     WHEN s.data_publicacao_convenio < DATE '1990-01-01' OR s.data_publicacao_convenio > DATE '2050-12-31' THEN -2
+                     ELSE CAST(DATE_FORMAT(s.data_publicacao_convenio, 'yyyyMMdd') AS INT) END
+            ) THEN 1 ELSE 0 END),
+            SUM(CASE WHEN g.data_inicio_vigencia_sk != (
+                CASE WHEN s.data_inicio_vigencia_convenio IS NULL THEN -1
+                     WHEN s.data_inicio_vigencia_convenio < DATE '1990-01-01' OR s.data_inicio_vigencia_convenio > DATE '2050-12-31' THEN -2
+                     ELSE CAST(DATE_FORMAT(s.data_inicio_vigencia_convenio, 'yyyyMMdd') AS INT) END
+            ) THEN 1 ELSE 0 END),
+            SUM(CASE WHEN g.data_fim_vigencia_sk != (
+                CASE WHEN s.data_fim_vigencia_convenio IS NULL THEN -1
+                     WHEN s.data_fim_vigencia_convenio < DATE '1990-01-01' OR s.data_fim_vigencia_convenio > DATE '2050-12-31' THEN -2
+                     ELSE CAST(DATE_FORMAT(s.data_fim_vigencia_convenio, 'yyyyMMdd') AS INT) END
+            ) THEN 1 ELSE 0 END),
+            SUM(CASE WHEN g.data_limite_prestacao_contas_sk != (
+                CASE WHEN s.data_limite_prestacao_contas IS NULL THEN -1
+                     WHEN s.data_limite_prestacao_contas < DATE '1990-01-01' OR s.data_limite_prestacao_contas > DATE '2050-12-31' THEN -2
+                     ELSE CAST(DATE_FORMAT(s.data_limite_prestacao_contas, 'yyyyMMdd') AS INT) END
+            ) THEN 1 ELSE 0 END)
+        FROM canonical s
+        JOIN gold.fct_convenio g ON s.numero_convenio = g.numero_convenio
+    """)
+    conv_diffs = cur.fetchall()[0]
+    elapsed = time.time() - t0
+    conv_total_diff = sum(conv_diffs)
+    is_ok = (conv_total_diff == 0)
+    if not is_ok:
+        all_passed = False
+    logger.info(f"[{'PASS' if is_ok else 'FAIL'}] Exact Date fct_convenio (assinatura={conv_diffs[0]}, publ={conv_diffs[1]}, inicio={conv_diffs[2]}, fim={conv_diffs[3]}, limite={conv_diffs[4]}): Divergências={conv_total_diff} ({elapsed:.2f}s)")
+
+    return all_passed
+
+
 def reconcile_orgao_conformance(cur) -> bool:
     logger.info("=" * 70)
     logger.info("6. CONFORMAÇÃO DE ÓRGÃO (GATE R4-A.1)")
@@ -718,6 +828,7 @@ def main():
         ("primary_keys", lambda: reconcile_primary_keys(cur)),
         ("referential_integrity", lambda: reconcile_referential_integrity(cur)),
         ("date_mapping", lambda: reconcile_date_mapping(cur)),
+        ("date_mapping_exact", lambda: reconcile_date_mapping_exact(cur)),
         ("orgao_conformance", lambda: reconcile_orgao_conformance(cur)),
         ("convenio_canonical_stability", lambda: reconcile_convenio_canonical_stability(cur)),
         ("financials_proposta", lambda: reconcile_financials_proposta(cur, check_baseline=args.check_baseline_r4a)),

@@ -1,0 +1,500 @@
+2026-09-17 17:51:08,275 [INFO] reconcile_silver_gold: ======================================================================
+2026-09-17 17:51:08,275 [INFO] reconcile_silver_gold: INICIANDO RECONCILIAÇÃO SILVER -> GOLD — MODO HISTÓRICO (BASELINE R4-A)
+2026-09-17 17:51:08,275 [INFO] reconcile_silver_gold: ======================================================================
+2026-09-17 17:51:08,306 [INFO] pyhive.hive: USE `default`
+2026-09-17 17:51:08,332 [INFO] pyhive.hive: SET spark.sql.autoBroadcastJoinThreshold = -1
+2026-09-17 17:51:08,341 [INFO] reconcile_silver_gold: ======================================================================
+2026-09-17 17:51:08,341 [INFO] reconcile_silver_gold: 1. VERIFICAÇÃO DE LOCATION FÍSICO DO SCHEMA GOLD
+2026-09-17 17:51:08,341 [INFO] reconcile_silver_gold: ======================================================================
+2026-09-17 17:51:08,341 [INFO] pyhive.hive: DESCRIBE DATABASE EXTENDED gold
+2026-09-17 17:51:08,356 [INFO] reconcile_silver_gold: [PASS] gold location: Esperado='s3a://gold/warehouse' | Atual='s3a://gold/warehouse'
+2026-09-17 17:51:08,356 [INFO] reconcile_silver_gold: ======================================================================
+2026-09-17 17:51:08,356 [INFO] reconcile_silver_gold: 2. RECONCILIAÇÃO DINÂMICA DE CONTAGEM DE LINHAS (ROW COUNTS)
+2026-09-17 17:51:08,356 [INFO] reconcile_silver_gold: ======================================================================
+2026-09-17 17:51:08,356 [INFO] pyhive.hive: SELECT 22282
+2026-09-17 17:51:08,445 [INFO] pyhive.hive: SELECT count(*) FROM gold.dim_data
+2026-09-17 17:51:09,078 [INFO] reconcile_silver_gold: [PASS] dim_data                      : Silver/Canonical=22,282 | Gold=22,282 | Diff=0 | Baseline=22,282 (MATCH) (0.72s)
+2026-09-17 17:51:09,079 [INFO] pyhive.hive: SELECT count(distinct identificacao_proponente) FROM silver.siconv_proposta
+2026-09-17 17:51:10,229 [INFO] pyhive.hive: SELECT count(*) FROM gold.dim_proponente
+2026-09-17 17:51:10,802 [INFO] reconcile_silver_gold: [PASS] dim_proponente                : Silver/Canonical=29,325 | Gold=29,325 | Diff=0 | Baseline=29,325 (MATCH) (1.72s)
+2026-09-17 17:51:10,802 [INFO] pyhive.hive: SELECT count(distinct codigo_municipio_ibge) FROM silver.siconv_proposta
+2026-09-17 17:51:11,618 [INFO] pyhive.hive: SELECT count(*) FROM gold.dim_municipio
+2026-09-17 17:51:12,138 [INFO] reconcile_silver_gold: [PASS] dim_municipio                 : Silver/Canonical=5,570 | Gold=5,570 | Diff=0 | Baseline=5,570 (MATCH) (1.34s)
+2026-09-17 17:51:12,138 [INFO] pyhive.hive: 
+            SELECT count(distinct cd) FROM (
+                SELECT codigo_orgao_superior as cd FROM silver.siconv_proposta
+                UNION
+                SELECT codigo_orgao as cd FROM silver.siconv_proposta
+                UNION
+                SELECT codigo_orgao_superior_programa as cd FROM silver.siconv_programa_cadastral
+            )
+        
+2026-09-17 17:51:14,402 [INFO] pyhive.hive: SELECT count(*) FROM gold.dim_orgao
+2026-09-17 17:51:14,841 [INFO] reconcile_silver_gold: [PASS] dim_orgao                     : Silver/Canonical=184 | Gold=184 | Diff=0 | Baseline=184 (MATCH) (2.70s)
+2026-09-17 17:51:14,842 [INFO] pyhive.hive: SELECT count(distinct id_programa) FROM silver.siconv_programa_cadastral
+2026-09-17 17:51:15,717 [INFO] pyhive.hive: SELECT count(*) FROM gold.dim_programa
+2026-09-17 17:51:16,235 [INFO] reconcile_silver_gold: [PASS] dim_programa                  : Silver/Canonical=53,018 | Gold=53,018 | Diff=0 | Baseline=53,018 (MATCH) (1.39s)
+2026-09-17 17:51:16,235 [INFO] pyhive.hive: SELECT count(*) FROM silver.siconv_proposta
+2026-09-17 17:51:16,951 [INFO] pyhive.hive: SELECT count(*) FROM gold.fct_proposta
+2026-09-17 17:51:17,621 [INFO] reconcile_silver_gold: [PASS] fct_proposta                  : Silver/Canonical=1,157,619 | Gold=1,157,619 | Diff=0 | Baseline=1,157,619 (MATCH) (1.39s)
+2026-09-17 17:51:17,621 [INFO] pyhive.hive: SELECT count(*) FROM silver.siconv_programa_proposta
+2026-09-17 17:51:18,182 [INFO] pyhive.hive: SELECT count(*) FROM gold.bridge_programa_proposta
+2026-09-17 17:51:18,729 [INFO] reconcile_silver_gold: [PASS] bridge_programa_proposta      : Silver/Canonical=1,158,975 | Gold=1,158,975 | Diff=0 | Baseline=1,158,975 (MATCH) (1.11s)
+2026-09-17 17:51:18,729 [INFO] pyhive.hive: 
+            SELECT count(*) FROM (
+                SELECT DISTINCT
+                    numero_convenio, id_proposta, data_assinatura_convenio, data_publicacao_convenio,
+                    data_inicio_vigencia_convenio, data_fim_vigencia_convenio, data_limite_prestacao_contas,
+                    situacao_convenio, subsituacao_convenio, situacao_publicacao, situacao_contratacao,
+                    is_instrumento_ativo, is_opera_obtv, is_assinado, numero_processo, unidade_gestora_emitente,
+                    quantidade_termos_aditivos, quantidade_prorrogacoes, valor_global_convenio,
+                    valor_repasse_convenio, valor_contrapartida_convenio, valor_empenhado_convenio,
+                    valor_desembolsado_convenio, valor_saldo_remanescente_tesouro,
+                    valor_saldo_remanescente_convenente, valor_rendimento_aplicacao,
+                    valor_ingresso_contrapartida, valor_global_original_convenio
+                FROM silver.siconv_convenio
+            )
+        
+2026-09-17 17:51:21,435 [INFO] pyhive.hive: SELECT count(*) FROM gold.fct_convenio
+2026-09-17 17:51:22,055 [INFO] reconcile_silver_gold: [PASS] fct_convenio                  : Silver/Canonical=287,584 | Gold=287,584 | Diff=0 | Baseline=287,584 (MATCH) (3.33s)
+2026-09-17 17:51:22,056 [INFO] pyhive.hive: SELECT count(*) FROM silver.siconv_convenio
+2026-09-17 17:51:22,779 [INFO] pyhive.hive: SELECT count(*) FROM gold.fct_convenio_saldo_observacao
+2026-09-17 17:51:23,355 [INFO] reconcile_silver_gold: [PASS] fct_convenio_saldo_observacao : Silver/Canonical=287,586 | Gold=287,586 | Diff=0 | Baseline=287,586 (MATCH) (1.30s)
+2026-09-17 17:51:23,355 [INFO] reconcile_silver_gold: ======================================================================
+2026-09-17 17:51:23,355 [INFO] reconcile_silver_gold: 3. UNICIDADE E NÃO-NULIDADE DE PRIMARY KEYS
+2026-09-17 17:51:23,355 [INFO] reconcile_silver_gold: ======================================================================
+2026-09-17 17:51:23,356 [INFO] pyhive.hive: SELECT count(*), count(distinct data_sk), sum(case when data_sk is null then 1 else 0 end) FROM gold.dim_data
+2026-09-17 17:51:24,146 [INFO] reconcile_silver_gold: [PASS] gold.dim_data (data_sk): Total=22,282 | Distintos=22,282 | Duplicados=0 | Nulos=0 (0.79s)
+2026-09-17 17:51:24,147 [INFO] pyhive.hive: SELECT count(*), count(distinct identificacao_proponente), sum(case when identificacao_proponente is null then 1 else 0 end) FROM gold.dim_proponente
+2026-09-17 17:51:25,058 [INFO] reconcile_silver_gold: [PASS] gold.dim_proponente (identificacao_proponente): Total=29,325 | Distintos=29,325 | Duplicados=0 | Nulos=0 (0.91s)
+2026-09-17 17:51:25,059 [INFO] pyhive.hive: SELECT count(*), count(distinct codigo_municipio_ibge), sum(case when codigo_municipio_ibge is null then 1 else 0 end) FROM gold.dim_municipio
+2026-09-17 17:51:25,851 [INFO] reconcile_silver_gold: [PASS] gold.dim_municipio (codigo_municipio_ibge): Total=5,570 | Distintos=5,570 | Duplicados=0 | Nulos=0 (0.79s)
+2026-09-17 17:51:25,852 [INFO] pyhive.hive: SELECT count(*), count(distinct codigo_orgao), sum(case when codigo_orgao is null then 1 else 0 end) FROM gold.dim_orgao
+2026-09-17 17:51:26,606 [INFO] reconcile_silver_gold: [PASS] gold.dim_orgao (codigo_orgao): Total=184 | Distintos=184 | Duplicados=0 | Nulos=0 (0.75s)
+2026-09-17 17:51:26,607 [INFO] pyhive.hive: SELECT count(*), count(distinct id_programa), sum(case when id_programa is null then 1 else 0 end) FROM gold.dim_programa
+2026-09-17 17:51:27,552 [INFO] reconcile_silver_gold: [PASS] gold.dim_programa (id_programa): Total=53,018 | Distintos=53,018 | Duplicados=0 | Nulos=0 (0.95s)
+2026-09-17 17:51:27,553 [INFO] pyhive.hive: SELECT count(*), count(distinct id_proposta), sum(case when id_proposta is null then 1 else 0 end) FROM gold.fct_proposta
+2026-09-17 17:51:29,426 [INFO] reconcile_silver_gold: [PASS] gold.fct_proposta (id_proposta): Total=1,157,619 | Distintos=1,157,619 | Duplicados=0 | Nulos=0 (1.87s)
+2026-09-17 17:51:29,427 [INFO] pyhive.hive: SELECT count(*), count(distinct numero_convenio), sum(case when numero_convenio is null then 1 else 0 end) FROM gold.fct_convenio
+2026-09-17 17:51:30,614 [INFO] reconcile_silver_gold: [PASS] gold.fct_convenio (numero_convenio): Total=287,584 | Distintos=287,584 | Duplicados=0 | Nulos=0 (1.19s)
+2026-09-17 17:51:30,615 [INFO] pyhive.hive: SELECT count(*), count(distinct id_proposta), sum(case when id_proposta is null then 1 else 0 end) FROM gold.fct_convenio
+2026-09-17 17:51:31,598 [INFO] reconcile_silver_gold: [PASS] gold.fct_convenio (id_proposta): Total=287,584 | Distintos=287,584 | Duplicados=0 | Nulos=0 (0.98s)
+2026-09-17 17:51:31,600 [INFO] pyhive.hive: SELECT count(*), count(distinct id_convenio_observacao), sum(case when id_convenio_observacao is null then 1 else 0 end) FROM gold.fct_convenio_saldo_observacao
+2026-09-17 17:51:33,113 [INFO] reconcile_silver_gold: [PASS] gold.fct_convenio_saldo_observacao (id_convenio_observacao): Total=287,586 | Distintos=287,586 | Duplicados=0 | Nulos=0 (1.51s)
+2026-09-17 17:51:33,114 [INFO] pyhive.hive: 
+        SELECT count(*)
+        FROM (
+            SELECT id_programa, id_proposta, count(*) as cnt
+            FROM gold.bridge_programa_proposta
+            GROUP BY id_programa, id_proposta
+            HAVING count(*) > 1
+        ) t
+    
+2026-09-17 17:51:36,996 [INFO] reconcile_silver_gold: [PASS] gold.bridge_programa_proposta (id_programa, id_proposta): Pares duplicados=0 (3.88s)
+2026-09-17 17:51:36,996 [INFO] reconcile_silver_gold: ======================================================================
+2026-09-17 17:51:36,996 [INFO] reconcile_silver_gold: 4. INTEGRIDADE REFERENCIAL E AUDITORIA DE ORFANDADE
+2026-09-17 17:51:36,996 [INFO] reconcile_silver_gold: ======================================================================
+2026-09-17 17:51:36,997 [INFO] pyhive.hive: 
+            SELECT count(*) FROM gold.dim_programa p
+            LEFT JOIN gold.dim_orgao o ON p.codigo_orgao_superior_programa = o.codigo_orgao
+            WHERE o.codigo_orgao IS NULL AND p.codigo_orgao_superior_programa IS NOT NULL
+        
+2026-09-17 17:51:38,754 [INFO] reconcile_silver_gold: [PASS] FK dim_programa.codigo_orgao_superior_programa -> dim_orgao: Órfãos=0 (1.76s)
+2026-09-17 17:51:38,755 [INFO] pyhive.hive: 
+            SELECT count(*) FROM gold.fct_proposta f
+            LEFT JOIN gold.dim_proponente d ON f.identificacao_proponente = d.identificacao_proponente
+            WHERE d.identificacao_proponente IS NULL
+        
+2026-09-17 17:51:41,601 [INFO] reconcile_silver_gold: [PASS] FK fct_proposta.identificacao_proponente -> dim_proponente: Órfãos=0 (2.85s)
+2026-09-17 17:51:41,602 [INFO] pyhive.hive: 
+            SELECT count(*) FROM gold.fct_proposta f
+            LEFT JOIN gold.dim_municipio d ON f.codigo_municipio_ibge = d.codigo_municipio_ibge
+            WHERE d.codigo_municipio_ibge IS NULL
+        
+2026-09-17 17:51:44,203 [INFO] reconcile_silver_gold: [PASS] FK fct_proposta.codigo_municipio_ibge -> dim_municipio: Órfãos=0 (2.60s)
+2026-09-17 17:51:44,204 [INFO] pyhive.hive: 
+            SELECT count(*) FROM gold.fct_proposta f
+            LEFT JOIN gold.dim_orgao d ON f.codigo_orgao_superior = d.codigo_orgao
+            WHERE d.codigo_orgao IS NULL
+        
+2026-09-17 17:51:45,889 [INFO] reconcile_silver_gold: [PASS] FK fct_proposta.codigo_orgao_superior -> dim_orgao: Órfãos=0 (1.69s)
+2026-09-17 17:51:45,890 [INFO] pyhive.hive: 
+            SELECT count(*) FROM gold.fct_proposta f
+            LEFT JOIN gold.dim_orgao d ON f.codigo_orgao = d.codigo_orgao
+            WHERE d.codigo_orgao IS NULL
+        
+2026-09-17 17:51:47,727 [INFO] reconcile_silver_gold: [PASS] FK fct_proposta.codigo_orgao -> dim_orgao: Órfãos=0 (1.84s)
+2026-09-17 17:51:47,727 [INFO] pyhive.hive: 
+            SELECT count(*) FROM gold.fct_convenio c
+            LEFT JOIN gold.fct_proposta p ON c.id_proposta = p.id_proposta
+            WHERE p.id_proposta IS NULL
+        
+2026-09-17 17:51:50,073 [INFO] reconcile_silver_gold: [PASS] FK fct_convenio.id_proposta -> fct_proposta: Órfãos=0 (2.35s)
+2026-09-17 17:51:50,074 [INFO] pyhive.hive: 
+            SELECT count(*) FROM gold.fct_convenio_saldo_observacao s
+            LEFT JOIN gold.fct_convenio c ON s.numero_convenio = c.numero_convenio
+            WHERE c.numero_convenio IS NULL
+        
+2026-09-17 17:51:51,820 [INFO] reconcile_silver_gold: [PASS] FK fct_convenio_saldo_observacao.numero_convenio -> fct_convenio: Órfãos=0 (1.75s)
+2026-09-17 17:51:51,821 [INFO] pyhive.hive: 
+            SELECT count(*) FROM gold.bridge_programa_proposta b
+            LEFT JOIN gold.dim_programa p ON b.id_programa = p.id_programa
+            WHERE p.id_programa IS NULL
+        
+2026-09-17 17:51:53,906 [INFO] reconcile_silver_gold: [PASS] FK bridge_programa_proposta.id_programa -> dim_programa: Órfãos=0 (2.09s)
+2026-09-17 17:51:53,906 [INFO] pyhive.hive: 
+        SELECT distinct b.id_proposta
+        FROM gold.bridge_programa_proposta b
+        LEFT JOIN gold.fct_proposta p ON b.id_proposta = p.id_proposta
+        WHERE p.id_proposta IS NULL
+    
+2026-09-17 17:51:56,621 [INFO] reconcile_silver_gold: [PASS] Bridge -> Proposta (Órfãos): Observados=3 (Conhecidos=3, Inesperados=0) (2.72s)
+2026-09-17 17:51:56,622 [INFO] reconcile_silver_gold: ======================================================================
+2026-09-17 17:51:56,622 [INFO] reconcile_silver_gold: 5. VALIDAÇÃO DE MAPEAMENTO TEMPORAL E SENTINELAS EM DIM_DATA
+2026-09-17 17:51:56,622 [INFO] reconcile_silver_gold: ======================================================================
+2026-09-17 17:51:56,622 [INFO] pyhive.hive: 
+        SELECT
+            count(*),
+            sum(case when data_sk = -1 then 1 else 0 end),
+            sum(case when data_sk = -2 then 1 else 0 end),
+            sum(case when data_sk > 0 then 1 else 0 end),
+            min(data),
+            max(data)
+        FROM gold.dim_data
+    
+2026-09-17 17:51:57,335 [INFO] reconcile_silver_gold: [PASS] dim_data cobertura estrutural: Total=22282 | Sentinela -1=1 | Sentinela -2=1 | Normais=22280 | Faixa=[1990-01-01 a 2050-12-31] (0.71s)
+2026-09-17 17:51:57,336 [INFO] pyhive.hive: 
+            SELECT
+                count(*),
+                sum(case when d.data_sk is null then 1 else 0 end),
+                sum(case when t.data_disponibilizacao_sk = -1 then 1 else 0 end),
+                sum(case when t.data_disponibilizacao_sk = -2 then 1 else 0 end)
+            FROM gold.dim_programa t
+            LEFT JOIN gold.dim_data d ON t.data_disponibilizacao_sk = d.data_sk
+        
+2026-09-17 17:51:58,961 [INFO] reconcile_silver_gold: [PASS] FK Data dim_programa.data_disponibilizacao_sk     : Total=53,018 | Órfãos=0 | Sentinela -1 (NULL)=3,138 | Sentinela -2 (Fora Janela)=0 (1.63s)
+2026-09-17 17:51:58,962 [INFO] pyhive.hive: 
+            SELECT
+                count(*),
+                sum(case when d.data_sk is null then 1 else 0 end),
+                sum(case when t.data_proposta_sk = -1 then 1 else 0 end),
+                sum(case when t.data_proposta_sk = -2 then 1 else 0 end)
+            FROM gold.fct_proposta t
+            LEFT JOIN gold.dim_data d ON t.data_proposta_sk = d.data_sk
+        
+2026-09-17 17:52:01,037 [INFO] reconcile_silver_gold: [PASS] FK Data fct_proposta.data_proposta_sk             : Total=1,157,619 | Órfãos=0 | Sentinela -1 (NULL)=0 | Sentinela -2 (Fora Janela)=0 (2.08s)
+2026-09-17 17:52:01,038 [INFO] pyhive.hive: 
+            SELECT
+                count(*),
+                sum(case when d.data_sk is null then 1 else 0 end),
+                sum(case when t.data_inicio_vigencia_proposta_sk = -1 then 1 else 0 end),
+                sum(case when t.data_inicio_vigencia_proposta_sk = -2 then 1 else 0 end)
+            FROM gold.fct_proposta t
+            LEFT JOIN gold.dim_data d ON t.data_inicio_vigencia_proposta_sk = d.data_sk
+        
+2026-09-17 17:52:03,094 [INFO] reconcile_silver_gold: [PASS] FK Data fct_proposta.data_inicio_vigencia_proposta_sk: Total=1,157,619 | Órfãos=0 | Sentinela -1 (NULL)=3 | Sentinela -2 (Fora Janela)=10 (2.06s)
+2026-09-17 17:52:03,095 [INFO] pyhive.hive: 
+            SELECT
+                count(*),
+                sum(case when d.data_sk is null then 1 else 0 end),
+                sum(case when t.data_fim_vigencia_proposta_sk = -1 then 1 else 0 end),
+                sum(case when t.data_fim_vigencia_proposta_sk = -2 then 1 else 0 end)
+            FROM gold.fct_proposta t
+            LEFT JOIN gold.dim_data d ON t.data_fim_vigencia_proposta_sk = d.data_sk
+        
+2026-09-17 17:52:05,012 [INFO] reconcile_silver_gold: [PASS] FK Data fct_proposta.data_fim_vigencia_proposta_sk: Total=1,157,619 | Órfãos=0 | Sentinela -1 (NULL)=3 | Sentinela -2 (Fora Janela)=4 (1.92s)
+2026-09-17 17:52:05,012 [INFO] pyhive.hive: 
+            SELECT
+                count(*),
+                sum(case when d.data_sk is null then 1 else 0 end),
+                sum(case when t.data_assinatura_sk = -1 then 1 else 0 end),
+                sum(case when t.data_assinatura_sk = -2 then 1 else 0 end)
+            FROM gold.fct_convenio t
+            LEFT JOIN gold.dim_data d ON t.data_assinatura_sk = d.data_sk
+        
+2026-09-17 17:52:06,465 [INFO] reconcile_silver_gold: [PASS] FK Data fct_convenio.data_assinatura_sk           : Total=287,584 | Órfãos=0 | Sentinela -1 (NULL)=50,024 | Sentinela -2 (Fora Janela)=0 (1.45s)
+2026-09-17 17:52:06,466 [INFO] pyhive.hive: 
+            SELECT
+                count(*),
+                sum(case when d.data_sk is null then 1 else 0 end),
+                sum(case when t.data_publicacao_sk = -1 then 1 else 0 end),
+                sum(case when t.data_publicacao_sk = -2 then 1 else 0 end)
+            FROM gold.fct_convenio t
+            LEFT JOIN gold.dim_data d ON t.data_publicacao_sk = d.data_sk
+        
+2026-09-17 17:52:07,906 [INFO] reconcile_silver_gold: [PASS] FK Data fct_convenio.data_publicacao_sk           : Total=287,584 | Órfãos=0 | Sentinela -1 (NULL)=50,426 | Sentinela -2 (Fora Janela)=0 (1.44s)
+2026-09-17 17:52:07,906 [INFO] pyhive.hive: 
+            SELECT
+                count(*),
+                sum(case when d.data_sk is null then 1 else 0 end),
+                sum(case when t.data_inicio_vigencia_sk = -1 then 1 else 0 end),
+                sum(case when t.data_inicio_vigencia_sk = -2 then 1 else 0 end)
+            FROM gold.fct_convenio t
+            LEFT JOIN gold.dim_data d ON t.data_inicio_vigencia_sk = d.data_sk
+        
+2026-09-17 17:52:09,359 [INFO] reconcile_silver_gold: [PASS] FK Data fct_convenio.data_inicio_vigencia_sk      : Total=287,584 | Órfãos=0 | Sentinela -1 (NULL)=0 | Sentinela -2 (Fora Janela)=1 (1.45s)
+2026-09-17 17:52:09,359 [INFO] pyhive.hive: 
+            SELECT
+                count(*),
+                sum(case when d.data_sk is null then 1 else 0 end),
+                sum(case when t.data_fim_vigencia_sk = -1 then 1 else 0 end),
+                sum(case when t.data_fim_vigencia_sk = -2 then 1 else 0 end)
+            FROM gold.fct_convenio t
+            LEFT JOIN gold.dim_data d ON t.data_fim_vigencia_sk = d.data_sk
+        
+2026-09-17 17:52:10,999 [INFO] reconcile_silver_gold: [PASS] FK Data fct_convenio.data_fim_vigencia_sk         : Total=287,584 | Órfãos=0 | Sentinela -1 (NULL)=0 | Sentinela -2 (Fora Janela)=0 (1.64s)
+2026-09-17 17:52:11,000 [INFO] pyhive.hive: 
+            SELECT
+                count(*),
+                sum(case when d.data_sk is null then 1 else 0 end),
+                sum(case when t.data_limite_prestacao_contas_sk = -1 then 1 else 0 end),
+                sum(case when t.data_limite_prestacao_contas_sk = -2 then 1 else 0 end)
+            FROM gold.fct_convenio t
+            LEFT JOIN gold.dim_data d ON t.data_limite_prestacao_contas_sk = d.data_sk
+        
+2026-09-17 17:52:12,359 [INFO] reconcile_silver_gold: [PASS] FK Data fct_convenio.data_limite_prestacao_contas_sk: Total=287,584 | Órfãos=0 | Sentinela -1 (NULL)=0 | Sentinela -2 (Fora Janela)=0 (1.36s)
+2026-09-17 17:52:12,359 [INFO] reconcile_silver_gold: ======================================================================
+2026-09-17 17:52:12,359 [INFO] reconcile_silver_gold: 5.1. VALIDAÇÃO EXATA DE MAPEAMENTO DE DATAS (SILVER -> GOLD)
+2026-09-17 17:52:12,359 [INFO] reconcile_silver_gold: ======================================================================
+2026-09-17 17:52:12,359 [INFO] pyhive.hive: 
+        SELECT count(*)
+        FROM silver.siconv_programa_cadastral s
+        JOIN gold.dim_programa g ON s.id_programa = g.id_programa
+        WHERE g.data_disponibilizacao_sk != (
+            CASE
+                WHEN s.data_disponibilizacao IS NULL THEN -1
+                WHEN s.data_disponibilizacao < DATE '1990-01-01' OR s.data_disponibilizacao > DATE '2050-12-31' THEN -2
+                ELSE CAST(DATE_FORMAT(s.data_disponibilizacao, 'yyyyMMdd') AS INT)
+            END
+        )
+    
+2026-09-17 17:52:14,020 [INFO] reconcile_silver_gold: [PASS] Exact Date dim_programa.data_disponibilizacao_sk: Divergências=0 (1.66s)
+2026-09-17 17:52:14,027 [INFO] pyhive.hive: 
+        SELECT
+            SUM(CASE WHEN g.data_proposta_sk != (
+                CASE WHEN s.data_proposta IS NULL THEN -1
+                     WHEN s.data_proposta < DATE '1990-01-01' OR s.data_proposta > DATE '2050-12-31' THEN -2
+                     ELSE CAST(DATE_FORMAT(s.data_proposta, 'yyyyMMdd') AS INT) END
+            ) THEN 1 ELSE 0 END),
+            SUM(CASE WHEN g.data_inicio_vigencia_proposta_sk != (
+                CASE WHEN s.data_inicio_vigencia_proposta IS NULL THEN -1
+                     WHEN s.data_inicio_vigencia_proposta < DATE '1990-01-01' OR s.data_inicio_vigencia_proposta > DATE '2050-12-31' THEN -2
+                     ELSE CAST(DATE_FORMAT(s.data_inicio_vigencia_proposta, 'yyyyMMdd') AS INT) END
+            ) THEN 1 ELSE 0 END),
+            SUM(CASE WHEN g.data_fim_vigencia_proposta_sk != (
+                CASE WHEN s.data_fim_vigencia_proposta IS NULL THEN -1
+                     WHEN s.data_fim_vigencia_proposta < DATE '1990-01-01' OR s.data_fim_vigencia_proposta > DATE '2050-12-31' THEN -2
+                     ELSE CAST(DATE_FORMAT(s.data_fim_vigencia_proposta, 'yyyyMMdd') AS INT) END
+            ) THEN 1 ELSE 0 END)
+        FROM silver.siconv_proposta s
+        JOIN gold.fct_proposta g ON s.id_proposta = g.id_proposta
+    
+2026-09-17 17:52:18,727 [INFO] reconcile_silver_gold: [PASS] Exact Date fct_proposta (proposta=0, inicio=0, fim=0): Divergências=0 (4.71s)
+2026-09-17 17:52:18,728 [INFO] pyhive.hive: 
+        WITH canonical AS (
+            SELECT DISTINCT
+                numero_convenio,
+                data_assinatura_convenio,
+                data_publicacao_convenio,
+                data_inicio_vigencia_convenio,
+                data_fim_vigencia_convenio,
+                data_limite_prestacao_contas
+            FROM silver.siconv_convenio
+        )
+        SELECT
+            SUM(CASE WHEN g.data_assinatura_sk != (
+                CASE WHEN s.data_assinatura_convenio IS NULL THEN -1
+                     WHEN s.data_assinatura_convenio < DATE '1990-01-01' OR s.data_assinatura_convenio > DATE '2050-12-31' THEN -2
+                     ELSE CAST(DATE_FORMAT(s.data_assinatura_convenio, 'yyyyMMdd') AS INT) END
+            ) THEN 1 ELSE 0 END),
+            SUM(CASE WHEN g.data_publicacao_sk != (
+                CASE WHEN s.data_publicacao_convenio IS NULL THEN -1
+                     WHEN s.data_publicacao_convenio < DATE '1990-01-01' OR s.data_publicacao_convenio > DATE '2050-12-31' THEN -2
+                     ELSE CAST(DATE_FORMAT(s.data_publicacao_convenio, 'yyyyMMdd') AS INT) END
+            ) THEN 1 ELSE 0 END),
+            SUM(CASE WHEN g.data_inicio_vigencia_sk != (
+                CASE WHEN s.data_inicio_vigencia_convenio IS NULL THEN -1
+                     WHEN s.data_inicio_vigencia_convenio < DATE '1990-01-01' OR s.data_inicio_vigencia_convenio > DATE '2050-12-31' THEN -2
+                     ELSE CAST(DATE_FORMAT(s.data_inicio_vigencia_convenio, 'yyyyMMdd') AS INT) END
+            ) THEN 1 ELSE 0 END),
+            SUM(CASE WHEN g.data_fim_vigencia_sk != (
+                CASE WHEN s.data_fim_vigencia_convenio IS NULL THEN -1
+                     WHEN s.data_fim_vigencia_convenio < DATE '1990-01-01' OR s.data_fim_vigencia_convenio > DATE '2050-12-31' THEN -2
+                     ELSE CAST(DATE_FORMAT(s.data_fim_vigencia_convenio, 'yyyyMMdd') AS INT) END
+            ) THEN 1 ELSE 0 END),
+            SUM(CASE WHEN g.data_limite_prestacao_contas_sk != (
+                CASE WHEN s.data_limite_prestacao_contas IS NULL THEN -1
+                     WHEN s.data_limite_prestacao_contas < DATE '1990-01-01' OR s.data_limite_prestacao_contas > DATE '2050-12-31' THEN -2
+                     ELSE CAST(DATE_FORMAT(s.data_limite_prestacao_contas, 'yyyyMMdd') AS INT) END
+            ) THEN 1 ELSE 0 END)
+        FROM canonical s
+        JOIN gold.fct_convenio g ON s.numero_convenio = g.numero_convenio
+    
+2026-09-17 17:52:22,125 [INFO] reconcile_silver_gold: [PASS] Exact Date fct_convenio (assinatura=0, publ=0, inicio=0, fim=0, limite=0): Divergências=0 (3.40s)
+2026-09-17 17:52:22,125 [INFO] reconcile_silver_gold: ======================================================================
+2026-09-17 17:52:22,126 [INFO] reconcile_silver_gold: 6. CONFORMAÇÃO DE ÓRGÃO (GATE R4-A.1)
+2026-09-17 17:52:22,126 [INFO] reconcile_silver_gold: ======================================================================
+2026-09-17 17:52:22,127 [INFO] pyhive.hive: 
+        WITH sup_prop AS (
+            SELECT DISTINCT codigo_orgao_superior AS cd, descricao_orgao_superior AS ds
+            FROM silver.siconv_proposta
+        ),
+        conc_prop AS (
+            SELECT DISTINCT codigo_orgao AS cd, descricao_orgao AS ds
+            FROM silver.siconv_proposta
+        ),
+        sup_prog AS (
+            SELECT DISTINCT codigo_orgao_superior_programa AS cd, descricao_orgao_superior_programa AS ds
+            FROM silver.siconv_programa_cadastral
+        ),
+        divergences AS (
+            SELECT s.cd, 'sup_prop vs conc_prop' as pair FROM sup_prop s JOIN conc_prop c ON s.cd = c.cd WHERE s.ds != c.ds
+            UNION ALL
+            SELECT s.cd, 'sup_prop vs sup_prog' as pair FROM sup_prop s JOIN sup_prog p ON s.cd = p.cd WHERE s.ds != p.ds
+            UNION ALL
+            SELECT c.cd, 'conc_prop vs sup_prog' as pair FROM conc_prop c JOIN sup_prog p ON c.cd = p.cd WHERE c.ds != p.ds
+        )
+        SELECT count(*) FROM divergences
+    
+2026-09-17 17:52:25,390 [INFO] reconcile_silver_gold: [PASS] Divergências entre papéis institucionais de órgão: 0 (3.26s)
+2026-09-17 17:52:25,390 [INFO] reconcile_silver_gold: ======================================================================
+2026-09-17 17:52:25,390 [INFO] reconcile_silver_gold: 7. PROVA DE ESTABILIDADE DA ASSINATURA CANÔNICA DE CONVÊNIO
+2026-09-17 17:52:25,390 [INFO] reconcile_silver_gold: ======================================================================
+2026-09-17 17:52:25,391 [INFO] pyhive.hive: 
+        WITH canonical_tuples AS (
+            SELECT DISTINCT
+                numero_convenio, id_proposta, data_assinatura_convenio, data_publicacao_convenio,
+                data_inicio_vigencia_convenio, data_fim_vigencia_convenio, data_limite_prestacao_contas,
+                situacao_convenio, subsituacao_convenio, situacao_publicacao, situacao_contratacao,
+                is_instrumento_ativo, is_opera_obtv, is_assinado, numero_processo, unidade_gestora_emitente,
+                quantidade_termos_aditivos, quantidade_prorrogacoes, valor_global_convenio,
+                valor_repasse_convenio, valor_contrapartida_convenio, valor_empenhado_convenio,
+                valor_desembolsado_convenio, valor_saldo_remanescente_tesouro,
+                valor_saldo_remanescente_convenente, valor_rendimento_aplicacao,
+                valor_ingresso_contrapartida, valor_global_original_convenio
+            FROM silver.siconv_convenio
+        )
+        SELECT count(*)
+        FROM (
+            SELECT numero_convenio, count(*) as cnt
+            FROM canonical_tuples
+            GROUP BY numero_convenio
+            HAVING count(*) > 1
+        ) t
+    
+2026-09-17 17:52:28,328 [INFO] reconcile_silver_gold: [PASS] Convênios com perfis canônicos múltiplos/divergentes: 0 (2.94s)
+2026-09-17 17:52:28,328 [INFO] reconcile_silver_gold: ======================================================================
+2026-09-17 17:52:28,328 [INFO] reconcile_silver_gold: 8. RECONCILIAÇÃO FINANCEIRA EXATA — PROPOSTAS
+2026-09-17 17:52:28,328 [INFO] reconcile_silver_gold: ======================================================================
+2026-09-17 17:52:28,329 [INFO] pyhive.hive: 
+        SELECT
+            CAST(coalesce(sum(CAST(valor_global_proposta AS DECIMAL(38,2))), 0.00) AS DECIMAL(38,2)),
+            CAST(coalesce(sum(CAST(valor_repasse_proposta AS DECIMAL(38,2))), 0.00) AS DECIMAL(38,2)),
+            CAST(coalesce(sum(CAST(valor_contrapartida_proposta AS DECIMAL(38,2))), 0.00) AS DECIMAL(38,2))
+        FROM silver.siconv_proposta
+    
+2026-09-17 17:52:29,294 [INFO] pyhive.hive: 
+        SELECT
+            CAST(coalesce(sum(CAST(valor_global_proposta AS DECIMAL(38,2))), 0.00) AS DECIMAL(38,2)),
+            CAST(coalesce(sum(CAST(valor_repasse_proposta AS DECIMAL(38,2))), 0.00) AS DECIMAL(38,2)),
+            CAST(coalesce(sum(CAST(valor_contrapartida_proposta AS DECIMAL(38,2))), 0.00) AS DECIMAL(38,2))
+        FROM gold.fct_proposta
+    
+2026-09-17 17:52:30,229 [INFO] reconcile_silver_gold: [PASS] Valor Global Proposta         : Silver=R$ 1,495,209,875,334.42 | Gold=R$ 1,495,209,875,334.42 | Diff=R$ 0.00 | Baseline=R$ 1,495,209,875,334.42 (MATCH)
+2026-09-17 17:52:30,229 [INFO] reconcile_silver_gold: [PASS] Valor Repasse Proposta        : Silver=R$ 1,425,758,135,735.63 | Gold=R$ 1,425,758,135,735.63 | Diff=R$ 0.00 | Baseline=R$ 1,425,758,135,735.63 (MATCH)
+2026-09-17 17:52:30,229 [INFO] reconcile_silver_gold: [PASS] Valor Contrapartida Proposta  : Silver=R$ 69,451,779,598.79 | Gold=R$ 69,451,779,598.79 | Diff=R$ 0.00 | Baseline=R$ 69,451,779,598.79 (MATCH)
+2026-09-17 17:52:30,230 [INFO] reconcile_silver_gold: Reconciliação financeira de propostas finalizada em 1.90s.
+2026-09-17 17:52:30,230 [INFO] reconcile_silver_gold: ======================================================================
+2026-09-17 17:52:30,230 [INFO] reconcile_silver_gold: 9. RECONCILIAÇÃO FINANCEIRA EXATA — CONVÊNIOS (CANÔNICA)
+2026-09-17 17:52:30,230 [INFO] reconcile_silver_gold: ======================================================================
+2026-09-17 17:52:30,231 [INFO] pyhive.hive: 
+        WITH canonical AS (
+            SELECT DISTINCT
+                numero_convenio, valor_global_convenio, valor_repasse_convenio,
+                valor_contrapartida_convenio, valor_empenhado_convenio, valor_desembolsado_convenio,
+                valor_saldo_remanescente_tesouro, valor_saldo_remanescente_convenente,
+                valor_rendimento_aplicacao, valor_ingresso_contrapartida, valor_global_original_convenio
+            FROM silver.siconv_convenio
+        )
+        SELECT
+            CAST(coalesce(sum(CAST(valor_global_convenio AS DECIMAL(38,2))), 0.00) AS DECIMAL(38,2)),
+            CAST(coalesce(sum(CAST(valor_repasse_convenio AS DECIMAL(38,2))), 0.00) AS DECIMAL(38,2)),
+            CAST(coalesce(sum(CAST(valor_contrapartida_convenio AS DECIMAL(38,2))), 0.00) AS DECIMAL(38,2)),
+            CAST(coalesce(sum(CAST(valor_empenhado_convenio AS DECIMAL(38,2))), 0.00) AS DECIMAL(38,2)),
+            CAST(coalesce(sum(CAST(valor_desembolsado_convenio AS DECIMAL(38,2))), 0.00) AS DECIMAL(38,2)),
+            CAST(coalesce(sum(CAST(valor_saldo_remanescente_tesouro AS DECIMAL(38,2))), 0.00) AS DECIMAL(38,2)),
+            CAST(coalesce(sum(CAST(valor_saldo_remanescente_convenente AS DECIMAL(38,2))), 0.00) AS DECIMAL(38,2)),
+            CAST(coalesce(sum(CAST(valor_rendimento_aplicacao AS DECIMAL(38,2))), 0.00) AS DECIMAL(38,2)),
+            CAST(coalesce(sum(CAST(valor_ingresso_contrapartida AS DECIMAL(38,2))), 0.00) AS DECIMAL(38,2)),
+            CAST(coalesce(sum(CAST(valor_global_original_convenio AS DECIMAL(38,2))), 0.00) AS DECIMAL(38,2))
+        FROM canonical
+    
+2026-09-17 17:52:31,952 [INFO] pyhive.hive: 
+        SELECT
+            CAST(coalesce(sum(CAST(valor_global_convenio AS DECIMAL(38,2))), 0.00) AS DECIMAL(38,2)),
+            CAST(coalesce(sum(CAST(valor_repasse_convenio AS DECIMAL(38,2))), 0.00) AS DECIMAL(38,2)),
+            CAST(coalesce(sum(CAST(valor_contrapartida_convenio AS DECIMAL(38,2))), 0.00) AS DECIMAL(38,2)),
+            CAST(coalesce(sum(CAST(valor_empenhado_convenio AS DECIMAL(38,2))), 0.00) AS DECIMAL(38,2)),
+            CAST(coalesce(sum(CAST(valor_desembolsado_convenio AS DECIMAL(38,2))), 0.00) AS DECIMAL(38,2)),
+            CAST(coalesce(sum(CAST(valor_saldo_remanescente_tesouro AS DECIMAL(38,2))), 0.00) AS DECIMAL(38,2)),
+            CAST(coalesce(sum(CAST(valor_saldo_remanescente_convenente AS DECIMAL(38,2))), 0.00) AS DECIMAL(38,2)),
+            CAST(coalesce(sum(CAST(valor_rendimento_aplicacao AS DECIMAL(38,2))), 0.00) AS DECIMAL(38,2)),
+            CAST(coalesce(sum(CAST(valor_ingresso_contrapartida AS DECIMAL(38,2))), 0.00) AS DECIMAL(38,2)),
+            CAST(coalesce(sum(CAST(valor_global_original_convenio AS DECIMAL(38,2))), 0.00) AS DECIMAL(38,2))
+        FROM gold.fct_convenio
+    
+2026-09-17 17:52:32,938 [INFO] reconcile_silver_gold: [PASS] Valor Global Convênio           : Canonical=R$ 356,840,744,533.16 | Gold=R$ 356,840,744,533.16 | Diff=R$ 0.00 | Baseline=R$ 356,840,744,533.16 (MATCH)
+2026-09-17 17:52:32,938 [INFO] reconcile_silver_gold: [PASS] Valor Repasse Convênio          : Canonical=R$ 331,271,766,468.34 | Gold=R$ 331,271,766,468.34 | Diff=R$ 0.00 | Baseline=R$ 331,271,766,468.34 (MATCH)
+2026-09-17 17:52:32,938 [INFO] reconcile_silver_gold: [PASS] Valor Contrapartida Convênio    : Canonical=R$ 23,709,764,114.58 | Gold=R$ 23,709,764,114.58 | Diff=R$ 0.00 | Baseline=R$ 23,709,764,114.58 (MATCH)
+2026-09-17 17:52:32,938 [INFO] reconcile_silver_gold: [PASS] Valor Empenhado Convênio        : Canonical=R$ 192,064,543,060.79 | Gold=R$ 192,064,543,060.79 | Diff=R$ 0.00 | Baseline=R$ 192,064,543,060.79 (MATCH)
+2026-09-17 17:52:32,938 [INFO] reconcile_silver_gold: [PASS] Valor Desembolsado Convênio     : Canonical=R$ 153,205,012,397.29 | Gold=R$ 153,205,012,397.29 | Diff=R$ 0.00 | Baseline=R$ 153,205,012,397.29 (MATCH)
+2026-09-17 17:52:32,938 [INFO] reconcile_silver_gold: [PASS] Saldo Remanescente Tesouro      : Canonical=R$ 12,223,173,437.40 | Gold=R$ 12,223,173,437.40 | Diff=R$ 0.00
+2026-09-17 17:52:32,938 [INFO] reconcile_silver_gold: [PASS] Saldo Remanescente Convenente   : Canonical=R$ 1,100,083,974.34 | Gold=R$ 1,100,083,974.34 | Diff=R$ 0.00
+2026-09-17 17:52:32,938 [INFO] reconcile_silver_gold: [PASS] Rendimento Aplicação            : Canonical=R$ 1,859,253,950.24 | Gold=R$ 1,859,253,950.24 | Diff=R$ 0.00
+2026-09-17 17:52:32,938 [INFO] reconcile_silver_gold: [PASS] Ingresso Contrapartida          : Canonical=R$ 13,358,461,503.52 | Gold=R$ 13,358,461,503.52 | Diff=R$ 0.00
+2026-09-17 17:52:32,938 [INFO] reconcile_silver_gold: [PASS] Valor Global Original           : Canonical=R$ 89,451,880,983.68 | Gold=R$ 89,451,880,983.68 | Diff=R$ 0.00
+2026-09-17 17:52:32,938 [INFO] reconcile_silver_gold: Reconciliação financeira canônica de convênios finalizada em 2.71s.
+2026-09-17 17:52:32,938 [INFO] reconcile_silver_gold: ======================================================================
+2026-09-17 17:52:32,938 [INFO] reconcile_silver_gold: 10. FATO OBSERVACIONAL DE SALDO E AUDITORIA DE CONFLITOS
+2026-09-17 17:52:32,938 [INFO] reconcile_silver_gold: ======================================================================
+2026-09-17 17:52:32,939 [INFO] pyhive.hive: 
+        SELECT
+            count(*),
+            count(distinct id_convenio_observacao),
+            CAST(coalesce(sum(CAST(valor_saldo_conta AS DECIMAL(38,2))), 0.00) AS DECIMAL(38,2)),
+            sum(case when has_source_conflict then 1 else 0 end)
+        FROM silver.siconv_convenio
+    
+2026-09-17 17:52:34,388 [INFO] pyhive.hive: 
+        SELECT
+            count(*),
+            count(distinct id_convenio_observacao),
+            CAST(coalesce(sum(CAST(valor_saldo_conta AS DECIMAL(38,2))), 0.00) AS DECIMAL(38,2)),
+            sum(case when has_source_conflict then 1 else 0 end)
+        FROM gold.fct_convenio_saldo_observacao
+    
+2026-09-17 17:52:35,611 [INFO] reconcile_silver_gold: [PASS] fct_convenio_saldo_observacao: Total=287,586 (Silver=287,586, Diff=0) | PKs Distintas=287,586 | Conflitos=4 (Diff=0) | Checksum Técnico Saldo=R$ 18,079,072,724.97 (Diff=R$ 0.00) | Baseline Checksum=R$ 18,079,072,724.97 (MATCH) (2.67s)
+2026-09-17 17:52:35,611 [INFO] reconcile_silver_gold: ======================================================================
+2026-09-17 17:52:35,611 [INFO] reconcile_silver_gold: 11. GUARDRAILS DE ASSOCIAÇÃO N:N NA BRIDGE
+2026-09-17 17:52:35,611 [INFO] reconcile_silver_gold: ======================================================================
+2026-09-17 17:52:35,611 [INFO] pyhive.hive: DESCRIBE gold.bridge_programa_proposta
+2026-09-17 17:52:35,661 [INFO] reconcile_silver_gold: [PASS] Colunas em gold.bridge_programa_proposta: ['id_programa', 'id_proposta'] (0.05s)
+2026-09-17 17:52:35,661 [INFO] reconcile_silver_gold: [INFO] Guardrail N:N satisfeito: Bridge contém estritamente chaves de relacionamento sem colunas financeiras ou rateios.
+2026-09-17 17:52:35,673 [INFO] reconcile_silver_gold: ======================================================================
+2026-09-17 17:52:35,673 [INFO] reconcile_silver_gold: RESUMO FINAL DA RECONCILIAÇÃO SILVER -> GOLD
+2026-09-17 17:52:35,673 [INFO] reconcile_silver_gold: ======================================================================
+2026-09-17 17:52:35,673 [INFO] reconcile_silver_gold: gold_location                   : PASS
+2026-09-17 17:52:35,673 [INFO] reconcile_silver_gold: row_counts                      : PASS
+2026-09-17 17:52:35,673 [INFO] reconcile_silver_gold: primary_keys                    : PASS
+2026-09-17 17:52:35,673 [INFO] reconcile_silver_gold: referential_integrity           : PASS
+2026-09-17 17:52:35,673 [INFO] reconcile_silver_gold: date_mapping                    : PASS
+2026-09-17 17:52:35,673 [INFO] reconcile_silver_gold: date_mapping_exact              : PASS
+2026-09-17 17:52:35,673 [INFO] reconcile_silver_gold: orgao_conformance               : PASS
+2026-09-17 17:52:35,673 [INFO] reconcile_silver_gold: convenio_canonical_stability    : PASS
+2026-09-17 17:52:35,673 [INFO] reconcile_silver_gold: financials_proposta             : PASS
+2026-09-17 17:52:35,673 [INFO] reconcile_silver_gold: financials_convenio             : PASS
+2026-09-17 17:52:35,673 [INFO] reconcile_silver_gold: saldo_observations              : PASS
+2026-09-17 17:52:35,673 [INFO] reconcile_silver_gold: bridge_guardrails               : PASS
+2026-09-17 17:52:35,673 [INFO] reconcile_silver_gold: ----------------------------------------------------------------------
+2026-09-17 17:52:35,673 [INFO] reconcile_silver_gold: Tempo total de execução: 87.39s
+2026-09-17 17:52:35,673 [INFO] reconcile_silver_gold: [SUCESSO] Todos os gates de governança e reconciliação da Camada Gold passaram 100%!
