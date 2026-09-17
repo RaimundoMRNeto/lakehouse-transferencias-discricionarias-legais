@@ -1,8 +1,8 @@
-name: lakehouse_transferencias_discricionarias_legais
-version: "1.0.0"
+name: 'lakehouse_transferencias_discricionarias_legais'
+version: '1.0.0'
 config-version: 2
 
-profile: dbt_lakehouse
+profile: 'dbt_lakehouse'
 
 model-paths: ["models"]
 macro-paths: ["macros"]
@@ -16,4 +16,14 @@ clean-targets:
 
 models:
   lakehouse_transferencias_discricionarias_legais:
-    +materialized: view
+    staging:
+      +materialized: ephemeral
+    silver:
+      +materialized: table
+      +file_format: delta
+      +schema: silver
+      +pre-hook:
+        - "SET spark.sql.parquet.datetimeRebaseModeInWrite=CORRECTED"
+        - "SET spark.sql.parquet.datetimeRebaseModeInRead=CORRECTED"
+        - "SET spark.sql.parquet.int96RebaseModeInWrite=CORRECTED"
+        - "SET spark.sql.parquet.int96RebaseModeInRead=CORRECTED"

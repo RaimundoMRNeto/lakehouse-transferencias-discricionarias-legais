@@ -1,0 +1,173 @@
+version: 2
+
+models:
+  - name: siconv_proposta
+    description: >
+      Tabela Silver de propostas de transferências governamentais no Transferegov.
+      Grão: 1 linha por proposta de trabalho.
+      Chave primária: id_proposta (100% única e NOT NULL).
+      Origem: bronze.siconv_proposta.
+      Limitações conhecidas: numero_proposta não é único operacionalmente (1.717 colisões legítimas de numeração local).
+    columns:
+      - name: id_proposta
+        description: "Identificador numérico único e imutável da proposta no Transferegov."
+        tests:
+          - not_null
+          - unique
+
+      - name: uf_proponente
+        description: "Unidade da Federação do proponente (normalizada em maiúsculas)."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['AC', 'AL', 'AM', 'AP', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MG', 'MS', 'MT', 'PA', 'PB', 'PE', 'PI', 'PR', 'RJ', 'RN', 'RO', 'RR', 'RS', 'SC', 'SE', 'SP', 'TO']
+
+      - name: valor_global_proposta
+        description: "Valor total proposto em reais com precisão DECIMAL(17,2)."
+        tests:
+          - not_null
+
+      - name: valor_repasse_proposta
+        description: "Valor solicitado de repasse da União em reais."
+        tests:
+          - not_null
+
+      - name: enviada_mandataria
+        description: "Indicador de encaminhamento para instituição financeira mandatária."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['SIM', 'NÃO', 'NÃO APLICÁVEL']
+
+  - name: siconv_programa_cadastral
+    description: >
+      Tabela Silver cadastral de programas governamentais.
+      Grão: 1 linha por id_programa.
+      Chave primária: id_programa (100% única e NOT NULL).
+      Origem: bronze.siconv_programa (agrupada via DISTINCT relacional puro).
+      Comprovada dependência funcional 1:1 estrita para todos os 53.018 programas.
+    columns:
+      - name: id_programa
+        description: "Identificador lógico do programa governamental no Transferegov."
+        tests:
+          - not_null
+          - unique
+
+      - name: codigo_programa
+        description: "Código funcional do programa governamental."
+        tests:
+          - not_null
+
+      - name: nome_programa
+        description: "Nome oficial do programa."
+        tests:
+          - not_null
+
+  - name: siconv_programa_elegibilidade
+    description: >
+      Tabela Silver com os critérios e detalhamentos de elegibilidade regional/orçamentária dos programas.
+      Grão: 1 linha por critério de elegibilidade (Programa × Modalidade × Natureza Jurídica × UF × Ação Orçamentária).
+      Chave técnica: id_programa_elegibilidade (SHA-256 determinístico, 100% única e NOT NULL).
+      Chave de negócio: id_programa (NÃO é única nesta tabela, representa a FK para programa_cadastral).
+    columns:
+      - name: id_programa_elegibilidade
+        description: "Surrogate key determinística SHA-256 baseada nos 5 atributos de elegibilidade."
+        tests:
+          - not_null
+          - unique
+
+      - name: id_programa
+        description: "Chave estrangeira lógica referenciando a entidade cadastral do programa."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('siconv_programa_cadastral')
+                field: id_programa
+
+  - name: siconv_programa_proposta
+    description: >
+      Tabela associativa Silver mantendo a relação N:N entre Programas e Propostas de trabalho.
+      Grão: 1 linha por vínculo associativo Programa × Proposta.
+      Chave natural: par composto (id_programa, id_proposta) (100% único e NOT NULL).
+      Limitações conhecidas: Contém 3 propostas órfãs históricas documentadas (321453, 1427146, 296629).
+    columns:
+      - name: id_programa
+        description: "Identificador do programa vinculado."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('siconv_programa_cadastral')
+                field: id_programa
+
+      - name: id_proposta
+        description: "Identificador da proposta vinculada."
+        tests:
+          - not_null
+
+  - name: siconv_convenio
+    description: >
+      Tabela Silver de instrumentos de repasse / convênios formalizados.
+      Grão: 1 observação do instrumento de transferência presente no snapshot oficial.
+      Chave técnica da observação: id_convenio_observacao (SHA-256 determinístico das 40 colunas oficiais).
+      Chave de negócio: numero_convenio (NOT NULL, NÃO é estritamente único: 287.584 distintos para 287.586 linhas).
+      Conflitos conhecidos: 2 chaves com 2 observações concorrentes legítimas de mesmo run e datas idênticas (949286 e 956078), diferindo unicamente em valor_saldo_conta. Não existe critério objetivo de recência, preservando-se as 287.586 observações.
+    columns:
+      - name: id_convenio_observacao
+        description: "Chave técnica determinística SHA-256 sobre todas as 40 colunas oficiais da observação."
+        tests:
+          - not_null
+          - unique
+
+      - name: numero_convenio
+        description: "Número operacional do instrumento de transferência (chave de negócio, NÃO única neste snapshot)."
+        tests:
+          - not_null
+
+      - name: id_proposta
+        description: "Identificador da proposta de trabalho originária do convênio."
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('siconv_proposta')
+                field: id_proposta
+
+      - name: is_instrumento_ativo
+        description: "Flag booleana indicando se o convênio está ativo."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [true, false]
+                quote: false
+
+      - name: is_opera_obtv
+        description: "Flag booleana indicando se opera Ordem Bancária de Transferências Voluntárias."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [true, false]
+                quote: false
+
+      - name: is_assinado
+        description: "Flag booleana indicando se o instrumento já foi assinado."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [true, false]
+                quote: false
+
+      - name: is_foto
+        description: "Flag booleana indicando registro fotográfico no sistema."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [true, false]
+                quote: false
