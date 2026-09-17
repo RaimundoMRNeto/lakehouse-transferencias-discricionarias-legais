@@ -1,0 +1,39 @@
+version: 2
+
+sources:
+  - name: bronze
+    schema: bronze
+    description: "Tabelas brutas (Delta Lake) da camada Bronze ingeridas a partir dos dados abertos oficiais do Transferegov (SICONV)."
+    tables:
+      - name: siconv_proposta
+        description: >
+          Propostas de trabalho apresentadas por proponentes no Transferegov.
+          Grão: 1 linha por proposta de trabalho.
+          Chave primária natural: ID_PROPOSTA (100% única e NOT NULL comprovada).
+          Limitações conhecidas: NR_PROPOSTA não é único (1.717 repetições legítimas de numeração operacional).
+          Colunas técnicas: __ingested_at_utc, __ingestion_run_id, __source_file, __source_sha256.
+
+      - name: siconv_programa_proposta
+        description: >
+          Tabela associativa (ponte) representando a relação N:N entre programas governamentais e propostas.
+          Grão: 1 linha por vínculo Programa × Proposta.
+          Chave natural: par composto (ID_PROGRAMA, ID_PROPOSTA) (100% único e NOT NULL).
+          Limitações conhecidas: Contém 3 propostas órfãs históricas conhecidas (321453, 1427146, 296629) e 78 propostas da base não possuem vínculo nesta tabela.
+          Colunas técnicas: __ingested_at_utc, __ingestion_run_id, __source_file, __source_sha256.
+
+      - name: siconv_programa
+        description: >
+          Critérios de elegibilidade e detalhamentos regionais/orçamentários de programas governamentais.
+          Grão: 1 linha por combinação de Programa × Modalidade × Natureza Jurídica × UF × Ação Orçamentária.
+          Chave técnica de observação: superchave composta de 5 colunas (100% única em 1.257.350 linhas).
+          Identidade lógica de negócio: ID_PROGRAMA (53.018 valores distintos).
+          Limitações conhecidas: ID_PROGRAMA NÃO é chave primária desta tabela física; datas anômalas (ex: 0006, 5008).
+          Colunas técnicas: __ingested_at_utc, __ingestion_run_id, __source_file, __source_sha256.
+
+      - name: siconv_convenio
+        description: >
+          Instrumentos de repasse / convênios formalizados no Transferegov.
+          Grão: 1 observação do instrumento no snapshot oficial.
+          Chave de negócio: NR_CONVENIO (NOT NULL, não estritamente única: 287.584 distintos para 287.586 linhas).
+          Limitações conhecidas: Presença de 2 convênios conflitantes (949286 e 956078) com duas observações simultâneas de mesmo run diferindo apenas em VL_SALDO_CONTA.
+          Colunas técnicas: __ingested_at_utc, __ingestion_run_id, __source_file, __source_sha256.
