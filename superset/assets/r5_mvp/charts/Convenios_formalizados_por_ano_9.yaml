@@ -23,7 +23,25 @@ params:
   row_limit: 100
   show_legend: false
   extra_form_data: {}
-query_context: null
+query_context: "{\"datasource\":{\"id\":1,\"type\":\"table\"},\"force\":false,\"queries\"\
+  :[{\"filters\":[{\"col\":\"ano_assinatura\",\"op\":\"IS NOT NULL\"}],\"extras\"\
+  :{\"having\":\"\",\"where\":\"\"},\"applied_time_extras\":{},\"columns\":[{\"columnType\"\
+  :\"BASE_AXIS\",\"sqlExpression\":\"ano_assinatura\",\"label\":\"ano_assinatura\"\
+  ,\"expressionType\":\"SQL\"}],\"metrics\":[\"Conv\xEAnios formalizados\"],\"orderby\"\
+  :[[\"Conv\xEAnios formalizados\",true]],\"annotation_layers\":[],\"row_limit\":100,\"\
+  series_limit\":0,\"order_desc\":false,\"url_params\":{},\"custom_params\":{},\"\
+  custom_form_data\":{},\"time_offsets\":[],\"post_processing\":[{\"operation\":\"\
+  pivot\",\"options\":{\"index\":[\"ano_assinatura\"],\"columns\":[],\"aggregates\"\
+  :{\"Conv\xEAnios formalizados\":{\"operator\":\"mean\"}},\"drop_missing_columns\"\
+  :true}},{\"operation\":\"flatten\"}]}],\"form_data\":{\"adhoc_filters\":[{\"clause\"\
+  :\"WHERE\",\"expressionType\":\"SIMPLE\",\"filterOptionName\":\"filter_ano_ass_not_null\"\
+  ,\"operator\":\"IS NOT NULL\",\"subject\":\"ano_assinatura\"}],\"datasource\":\"\
+  1__table\",\"extra_form_data\":{},\"metrics\":[\"Conv\xEAnios formalizados\"],\"\
+  order_desc\":false,\"row_limit\":100,\"show_legend\":false,\"slice_id\":9,\"viz_type\"\
+  :\"echarts_timeseries_bar\",\"x_axis\":\"ano_assinatura\",\"x_axis_sort_asc\":true,\"\
+  x_axis_title\":\"Ano de Assinatura\",\"y_axis_format\":\"SMART_NUMBER\",\"y_axis_title\"\
+  :\"Conv\xEAnios Formalizados\",\"force\":false,\"result_format\":\"json\",\"result_type\"\
+  :\"full\"},\"result_format\":\"json\",\"result_type\":\"full\"}"
 cache_timeout: null
 uuid: 8256cb84-aa55-4c9a-b65c-b5a419443997
 version: 1.0.0

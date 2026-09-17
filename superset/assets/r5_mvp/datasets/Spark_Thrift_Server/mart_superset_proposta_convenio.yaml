@@ -1,6 +1,6 @@
-table_name: vw_superset_proposta_convenio
+table_name: mart_superset_proposta_convenio
 main_dttm_col: data_proposta
-description: "View sem\xE2ntica de Propostas e Conv\xEAnios para an\xE1lises executivas."
+description: "Transfer\xEAncias \u2014 Propostas e Conv\xEAnios (Serving Mart Gold)"
 default_endpoint: null
 offset: 0
 cache_timeout: null
@@ -17,19 +17,6 @@ always_filter_main_dttm: false
 folders: null
 uuid: 9683733b-5c83-4892-95e2-ff935e972e12
 metrics:
-- metric_name: "Propostas com conv\xEAnio (%)"
-  verbose_name: null
-  metric_type: count
-  expression: "CASE\n    WHEN COUNT(DISTINCT id_proposta) = 0 THEN NULL\n    ELSE\n\
-    \        100.0 *\n        COUNT(DISTINCT CASE\n            WHEN numero_convenio\
-    \ IS NOT NULL THEN id_proposta\n        END)\n        /\n        COUNT(DISTINCT\
-    \ id_proposta)\nEND"
-  description: "Propor\xE7\xE3o das propostas presentes no conjunto filtrado que possuem\
-    \ instrumento formalizado."
-  d3format: null
-  currency: null
-  extra: null
-  warning_text: null
 - metric_name: Percentual empenhado
   verbose_name: null
   metric_type: sum
@@ -53,20 +40,22 @@ metrics:
   currency: null
   extra: null
   warning_text: null
+- metric_name: "Propostas com conv\xEAnio (%)"
+  verbose_name: null
+  metric_type: count
+  expression: "CASE\n    WHEN COUNT(*) = 0 THEN NULL\n    ELSE\n        100.0 * COUNT(numero_convenio)\
+    \ / COUNT(*)\nEND"
+  description: "Propor\xE7\xE3o das propostas presentes no conjunto filtrado que possuem\
+    \ instrumento formalizado."
+  d3format: null
+  currency: null
+  extra: null
+  warning_text: null
 - metric_name: Valor global proposto
   verbose_name: null
   metric_type: sum
   expression: SUM(valor_global_proposta)
   description: Soma do valor global total de todas as propostas no conjunto filtrado.
-  d3format: null
-  currency: null
-  extra: null
-  warning_text: null
-- metric_name: "Conv\xEAnios formalizados"
-  verbose_name: null
-  metric_type: count
-  expression: COUNT(DISTINCT numero_convenio)
-  description: "Total de conv\xEAnios formalizados com n\xFAmero de instrumento emitido."
   d3format: null
   currency: null
   extra: null
@@ -89,6 +78,15 @@ metrics:
   currency: null
   extra: null
   warning_text: null
+- metric_name: "Conv\xEAnios formalizados"
+  verbose_name: null
+  metric_type: count
+  expression: COUNT(numero_convenio)
+  description: "Total de conv\xEAnios formalizados com n\xFAmero de instrumento emitido."
+  d3format: null
+  currency: null
+  extra: null
+  warning_text: null
 - metric_name: Valor global conveniado
   verbose_name: null
   metric_type: sum
@@ -101,7 +99,7 @@ metrics:
 - metric_name: Propostas
   verbose_name: null
   metric_type: count
-  expression: COUNT(DISTINCT id_proposta)
+  expression: COUNT(*)
   description: "Total de propostas \xFAnicas submetidas no Siconv/Transferegov."
   d3format: null
   currency: null

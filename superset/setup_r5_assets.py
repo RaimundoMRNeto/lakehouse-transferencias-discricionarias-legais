@@ -57,17 +57,17 @@ with app.app_context():
     # Validação do Gate de conectividade
     with database.get_sqla_engine() as engine:
         with engine.connect() as conn:
-            cnt = conn.execute(text("SELECT COUNT(*) FROM gold.vw_superset_proposta_convenio")).scalar()
-            print(f"[2/6] Gate de conectividade aprovado: {cnt:,} linhas na view.")
+            cnt = conn.execute(text("SELECT COUNT(*) FROM gold.mart_superset_proposta_convenio")).scalar()
+            print(f"[2/6] Gate de conectividade aprovado: {cnt:,} linhas no serving mart.")
 
-    # 3. Dataset da View Semântica
-    table_name = "vw_superset_proposta_convenio"
+    # 3. Dataset do Serving Mart
+    table_name = "mart_superset_proposta_convenio"
     schema_name = "gold"
 
-    tbl = db.session.query(SqlaTable).filter_by(
-        database_id=database.id,
-        table_name=table_name,
-        schema=schema_name
+    tbl = db.session.query(SqlaTable).filter(
+        SqlaTable.database_id == database.id,
+        SqlaTable.schema == schema_name,
+        SqlaTable.table_name.in_(["mart_superset_proposta_convenio", "vw_superset_proposta_convenio"])
     ).first()
 
     if not tbl:
@@ -75,13 +75,16 @@ with app.app_context():
             table_name=table_name,
             schema=schema_name,
             database=database,
-            description="Transferências — Propostas e Convênios (View Semântica Gold)"
+            description="Transferências — Propostas e Convênios (Serving Mart Gold)"
         )
         db.session.add(tbl)
         db.session.commit()
         print(f"[3/6] Dataset '{table_name}' registrado.")
     else:
-        print(f"[3/6] Dataset '{table_name}' já existente validado.")
+        tbl.table_name = table_name
+        tbl.description = "Transferências — Propostas e Convênios (Serving Mart Gold)"
+        db.session.commit()
+        print(f"[3/6] Dataset atualizado para apontar para '{table_name}'.")
 
     tbl.fetch_metadata()
     db.session.commit()
@@ -90,25 +93,20 @@ with app.app_context():
     metrics_spec = [
         (
             "Propostas",
-            "COUNT(DISTINCT id_proposta)",
+            "COUNT(*)",
             "Total de propostas únicas submetidas no Siconv/Transferegov."
         ),
         (
             "Convênios formalizados",
-            "COUNT(DISTINCT numero_convenio)",
+            "COUNT(numero_convenio)",
             "Total de convênios formalizados com número de instrumento emitido."
         ),
         (
             "Propostas com convênio (%)",
             """CASE
-    WHEN COUNT(DISTINCT id_proposta) = 0 THEN NULL
+    WHEN COUNT(*) = 0 THEN NULL
     ELSE
-        100.0 *
-        COUNT(DISTINCT CASE
-            WHEN numero_convenio IS NOT NULL THEN id_proposta
-        END)
-        /
-        COUNT(DISTINCT id_proposta)
+        100.0 * COUNT(numero_convenio) / COUNT(*)
 END""",
             "Proporção das propostas presentes no conjunto filtrado que possuem instrumento formalizado."
         ),
