@@ -14,6 +14,24 @@ e legais.
 - dbt — transformação e testes
 - Apache Superset — visualização
 
+### Fluxo Analítico de Ponta a Ponta
+
+```text
+Transferegov
+     ↓
+Bronze
+     ↓
+Silver
+     ↓
+Gold
+     ↓
+vw_superset_proposta_convenio
+     ↓
+Apache Superset
+     ↓
+Dashboard Executivo
+```
+
 ## Camadas
 
 - Bronze — dados brutos provenientes das fontes oficiais
@@ -25,5 +43,5 @@ e legais.
 - **R1** — Configuração da infraestrutura Lakehouse (concluído / merged).
 - **R2** — Ingestão e camada Bronze dos dados oficiais do Transferegov (concluído / merged).
 - **R3** — Camada Silver implementada e validada (concluído / merged).
-- **R4-A / R4-A.1** — Descoberta analítica, modelagem dimensional e contratos aprovados (concluído).
-- **R4-B / R4-B.1** — Camada Gold materializada em Delta Lake via dbt + Spark (5 dimensões confirmadas, 3 fatos, 1 bridge, 12 gates de reconciliação dinâmica aprovados com R$ 0,00 de divergência, dbt build com 81/81 checks PASS, rastreabilidade e baseline validados) — aguardando revisão humana na branch `feat/r4b-camada-gold`.
+- **R4** — Camada Gold dimensional implementada e validada (concluído / merged).
+- **R5-MVP** — Dashboard executivo Superset baseado em view semântica Gold (implementado na branch / aguardando revisão humana).
