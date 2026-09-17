@@ -45,7 +45,7 @@ with app.app_context():
 
     for sc_name, sc_filters in scenarios:
         print(f"\n>>> Cenário: {sc_name}")
-        
+
         # Teste 1: KPIs
         kpi_query = {
             'metrics': [
