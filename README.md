@@ -24,4 +24,4 @@ e legais.
 
 - **R1** — Configuração da infraestrutura Lakehouse (concluído).
 - **R2** — Ingestão e camada Bronze dos dados oficiais do Transferegov (concluído).
-- **R3** — Camada Silver implementada na branch e aguardando revisão humana (modelagem relacional de grão preservado, 5 entidades Delta, reconciliação financeira DECIMAL exata e 42 testes dbt aprovados).
+- **R3** — Camada Silver implementada e em revisão no PR #2 (modelagem relacional de grão preservado, 5 entidades Delta, reconciliação financeira DECIMAL exata e 43 testes dbt aprovados).
