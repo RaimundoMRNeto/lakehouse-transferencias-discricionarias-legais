@@ -500,15 +500,31 @@ def run_orgao_section(conn) -> Dict[str, Any]:
         WHERE s.ds != p.ds
     """)
     diffs_sup_prog = cursor.fetchall()
+
+    cursor.execute("""
+        WITH conc AS (
+            SELECT DISTINCT codigo_orgao as cd, descricao_orgao as ds
+            FROM silver.siconv_proposta
+        ),
+        prog AS (
+            SELECT DISTINCT codigo_orgao_superior_programa as cd, descricao_orgao_superior_programa as ds
+            FROM silver.siconv_programa_cadastral
+        )
+        SELECT conc.cd, conc.ds as ds_conc, prog.ds as ds_prog
+        FROM conc JOIN prog ON conc.cd = prog.cd
+        WHERE conc.ds != prog.ds
+    """)
+    diffs_conc_prog = cursor.fetchall()
     log_query_end("Verifica se descricoes divergem quando codigos coincidem", t_q)
 
     cursor.close()
     duration = time.time() - t0
 
-    # Decisão de conformação
+    # Decisão de conformação exigindo simultaneamente 0 conflitos nos 3 pares
     conformed_safe = (
         len(diffs_sup_conc) == 0 and
         len(diffs_sup_prog) == 0 and
+        len(diffs_conc_prog) == 0 and
         role_results["orgao_superior_proposta"]["multiple_desc"] == 0 and
         role_results["orgao_concedente_proposta"]["multiple_desc"] == 0 and
         role_results["orgao_superior_programa"]["multiple_desc"] == 0
@@ -526,10 +542,11 @@ def run_orgao_section(conn) -> Dict[str, Any]:
         },
         "description_mismatches_sup_vs_conc": len(diffs_sup_conc),
         "description_mismatches_sup_prop_vs_prog": len(diffs_sup_prog),
+        "description_mismatches_conc_prop_vs_prog": len(diffs_conc_prog),
         "conformed_dim_orgao_defensible": conformed_safe,
         "duration_seconds": round(duration, 2)
     }
-    logger.info(f"[RESULT] orgao: conformed_safe={conformed_safe}, sup={n_sup}, conc={n_conc}, inter={inter_sup_conc}")
+    logger.info(f"[RESULT] orgao: conformed_safe={conformed_safe}, sup={n_sup}, conc={n_conc}, inter_conc_prog={inter_conc_prog}, diffs_conc_prog={len(diffs_conc_prog)}")
     logger.info(f"[END] section=orgao (duracao: {duration:.2f}s)")
     return res
 
@@ -912,11 +929,12 @@ def run_datas_section(conn) -> Dict[str, Any]:
             "grain": "1 dia calendario",
             "primary_key": "data_sk (formato YYYYMMDD)",
             "role_playing": "Multiplos papeis analiticos (data_proposta, data_assinatura, data_publicacao, vigencia, etc.)",
-            "candidate_domain": "1990-01-01 a 2050-12-31",
+            "candidate_window": "1990-01-01 a 2050-12-31 (janela analitica candidata de governanca, nao regra de validade da fonte)",
             "special_keys": {
-                "-1": "Data nao informada / NULL",
-                "-2": "Data fora do dominio analitico valido (<1990 ou >2050)"
-            }
+                "-1": "Data Nao Informada / NULL",
+                "-2": "Data Fora da Janela Analitica (<1990 ou >2050)"
+            },
+            "status": "CONFIRMADA EM PRINCIPIO (janela a ser ratificada no R4-B)"
         },
         "duration_seconds": round(duration, 2)
     }

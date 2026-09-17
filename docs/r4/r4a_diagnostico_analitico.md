@@ -2,7 +2,7 @@
 
 ## 1. Missão e Princípios de Governança da Camada Gold
 
-O marco **R4-A** tem como objetivo estabelecer as bases analíticas, empíricas e contratuais da futura camada Gold do Lakehouse de Transferências Discricionárias e Legais da União (Transferegov).
+O marco **R4-A** (e seu refinamento contratual **R4-A.1**) tem como objetivo estabelecer as bases analíticas, empíricas e contratuais da futura camada Gold do Lakehouse de Transferências Discricionárias e Legais da União (Transferegov).
 
 O princípio regente da camada Gold é:
 > **"A camada Silver preserva e qualifica os dados da fonte original. A camada Gold organiza esses dados para consumo analítico eficiente e intuitivo, sem alterar significativamente os significados de negócio, sem multiplicar medidas por expansão cartesiana de relacionamentos e sem ocultar ambiguidades operacionais."**
@@ -68,13 +68,13 @@ Foi testada a tupla `(nome, ibge, município, UF, CEP, endereço, bairro, nature
 
 ### 3.2. Interpretação
 No snapshot corrente, a base Transferegov apresenta dados cadastrais do proponente desnormalizados na tabela de propostas de forma completamente estável. Não há discrepância de grafia, mudança de endereço, alteração de CEP ou duplicidade cadastral vinculada ao mesmo CNPJ/CPF (`identificacao_proponente`).
-Cada `identificacao_proponente` atua como chave candidata natural para uma dimensão com grão de uma linha por proponente.
+Cada `identificacao_proponente` atua como chave natural para uma dimensão com grão de uma linha por proponente.
 
 ### 3.3. Decisão Candidata
 - **Classificação**: **`CONFIRMADA`**
 - **Entidade Recomendada**: `gold.dim_proponente`
 - **Grão**: 1 linha por `identificacao_proponente`
-- **Nota Metodológica**: Embora os dados do snapshot atual sustentem a estabilidade 1:1, a modelagem futura deve ter ciência de que o snapshot reflete o estado atual dos proponentes no sistema. Não é necessário implementar nesta fase a entidade complexa `dim_proponente_perfil`.
+- **Chave Primária**: `identificacao_proponente` (chave natural direta, sem necessidade de surrogate key artificial no R4 inicial).
 
 ---
 
@@ -87,7 +87,7 @@ Foi avaliada a dependência funcional em `silver.siconv_proposta` a partir de `c
 - $\text{codigo\_municipio\_ibge} \to (\text{municipio\_proponente}, \text{uf\_proponente})$
 
 #### Resultados Empíricos:
-- **Códigos IBGE distintos observados**: **5.570** (cobertura total dos municípios brasileiros cadastrados)
+- **Códigos municipais distintos observados no snapshot**: **5.570**
 - **Códigos com `codigo_municipio_ibge IS NULL`**: **0**
 - **Códigos com exatamente 1 nome de município**: **5.570 (100,00%)**
 - **Códigos com múltiplos nomes de município**: **0 (0,00%)** (máximo: 1)
@@ -96,14 +96,17 @@ Foi avaliada a dependência funcional em `silver.siconv_proposta` a partir de `c
 - **Códigos com exatamente 1 tupla `(município, UF)`**: **5.570 (100,00%)**
 - **Códigos com múltiplas tuplas**: **0 (0,00%)** (máximo: 1)
 
+> [!NOTE]
+> **Ressalva Metodológica de Cobertura**: Nenhum cadastro externo do IBGE foi consultado nesta etapa. Os 5.570 códigos representam exclusivamente o universo de municípios observados com propostas cadastradas no snapshot ativo. A relação funcional observada é estritamente $1:1$ de `codigo_municipio_ibge` para `(municipio_proponente, uf_proponente)`, sem inferir cobertura nacional total do país a partir de fontes externas.
+
 ### 4.2. Interpretação
-Não há anomalias de codificação, colisões de códigos IBGE entre municípios diferentes, nem inconsistências federativas de UF. A relação funcional é estritamente $1:1$ de `codigo_municipio_ibge` para `(municipio_proponente, uf_proponente)`.
+Não há anomalias de codificação, colisões de códigos municipais nem inconsistências federativas de UF dentro do universo empírico observado.
 
 ### 4.3. Decisão Candidata
 - **Classificação**: **`CONFIRMADA`**
 - **Entidade Recomendada**: `gold.dim_municipio`
 - **Grão**: 1 linha por `codigo_municipio_ibge` (7 dígitos)
-- **Chave Primária**: `codigo_municipio_ibge`
+- **Chave Primária**: `codigo_municipio_ibge` (chave natural direta)
 - **Atributos Canônicos**: `nome_municipio`, `sigla_uf`
 
 ---
@@ -121,24 +124,25 @@ O modelo de dados original do SICONV/Transferegov contém referências a órgão
 - `codigo_orgao -> descricao_orgao`: 182 códigos distintos, todos com exatamente 1 descrição (0 conflitos).
 - `codigo_orgao_superior_programa -> descricao_orgao_superior_programa`: 39 códigos distintos, todos com exatamente 1 descrição (0 conflitos).
 
-#### Análise Intersetorial de Universos de Códigos:
+#### Análise Intersetorial de Universos de Códigos (Três Pares Cruzados):
 - Códigos em Órgão Superior (Proposta): **37**
 - Códigos em Órgão Concedente (Proposta): **182**
 - Códigos em Órgão Superior (Programa): **39**
-- Interseção Órgão Superior $\cap$ Órgão Concedente (Proposta): **37** (100% dos superiores constam como concedentes)
-- Interseção Órgão Superior (Proposta) $\cap$ Órgão Superior (Programa): **37** (os 37 de proposta estão contidos nos 39 de programa; programa possui 2 órgãos adicionais que nunca emitiram propostas no snapshot)
-- **Divergência de Descrições para o mesmo Código**: **0 ocorrências** (quando um código aparece como superior e concedente, ou em programa e proposta, sua descrição textual é rigorosamente idêntica).
+- **Par 1: Superior Proposta $\cap$ Concedente Proposta**: **37 códigos compartilhados**, todos com descrição idêntica (**0 divergências**).
+- **Par 2: Superior Proposta $\cap$ Superior Programa**: **37 códigos compartilhados**, todos com descrição idêntica (**0 divergências**). (Programa possui 2 órgãos adicionais que não emitiram propostas no snapshot).
+- **Par 3: Concedente Proposta $\cap$ Superior Programa**: **37 códigos compartilhados**, todos com descrição idêntica (**0 divergências**).
 
 ### 5.2. Interpretação
-Os códigos de órgãos do governo federal utilizam o mesmo plano de codificação SIORG (Sistema de Informações Organizacionais do Governo Federal). Não existe colisão semântica entre os papéis: um código representa a mesma entidade administrativa quer ela atue como ministério supervisor (órgão superior) ou como unidade setorial concedente (órgão concedente).
+Os códigos observados são semanticamente consistentes entre os papéis analisados. Não se afirma filiação formal ao plano SIORG sem documentação externa da fonte, mas os dados empíricos comprovam estabilidade semântica estrita: o mesmo código numérico carrega a mesma descrição institucional em todos os papéis examinados, sem divergências textuais entre papéis superiores e executores.
 
 ### 5.3. Decisão Candidata
 - **Classificação**: **`CONFIRMADA`**
 - **Arquitetura Recomendada**: **Dimensão Única Conformada (`gold.dim_orgao`) com Role-Playing**.
-- **Grão**: 1 linha por `codigo_orgao`.
+- **Grão**: 1 linha por `codigo_orgao` (184 órgãos distintos no universo consolidado).
+- **Chave Primária**: `codigo_orgao` (chave natural direta).
 - **Papéis no Modelo Dimensional**:
-  - `dim_orgao` desempenha o papel de `orgao_superior` e de `orgao_concedente` nas fatos via foreign keys role-playing (`id_orgao_superior_sk`, `id_orgao_concedente_sk`).
-  - Não há necessidade de criar tabelas físicas separadas (`dim_orgao_superior` e `dim_orgao_concedente`), evitando duplicação desnecessária de armazenamento e catálogo.
+  - `dim_orgao` desempenha o papel de `orgao_superior` e de `orgao_concedente` nas fatos via chaves role-playing (`codigo_orgao_superior`, `codigo_orgao`).
+  - Dispensada a criação de tabelas físicas separadas (`dim_orgao_superior` e `dim_orgao_concedente`), evitando duplicação redundante de armazenamento.
 
 ---
 
@@ -170,7 +174,7 @@ Foi executada auditoria exaustiva e NULL-aware sobre **todas as 34 colunas anal�
 - Todas as demais 33 colunas analíticas são rigorosamente idênticas entre as linhas 1 e 2 de ambos os instrumentos.
 
 ### 6.2. Interpretação
-A duplicidade observada em `siconv_convenio` na fonte original (e preservada na Silver com rastreabilidade intacta) decorre exclusivamente de leituras bancárias instantâneas conflitantes (`valor_saldo_conta`), provavelmente geradas por microatualizações de extrato durante o processo de extração operacional da base Transferegov.
+A duplicidade observada em `siconv_convenio` na fonte original (e preservada na Silver com rastreabilidade intacta) decorre exclusivamente de leituras bancárias instantâneas conflitantes (`valor_saldo_conta`), provavelmente geradas por microatualizações de extrato durante a extração operacional.
 Todos os parâmetros jurídicos, orçamentários, contratuais e financeiros oficiais do convênio são **100% estáveis por `numero_convenio`**.
 
 ### 6.3. Decisão Candidata e Gate da Fato Convênio
@@ -178,7 +182,7 @@ Todos os parâmetros jurídicos, orçamentários, contratuais e financeiros ofic
 - **Arquitetura de Duas Camadas para Convênios**:
   1. `gold.fct_convenio`: Grão analítico consolidado de **1 linha por `numero_convenio`** (287.584 linhas). Conterá todos os atributos e medidas canônicas estáveis, **excluindo expressamente** a coluna ambígua `valor_saldo_conta`.
   2. `gold.fct_convenio_saldo_observacao`: Entidade observacional de grão fino com **1 linha por `id_convenio_observacao`** (287.586 linhas), preservando integralmente todas as leituras de saldo de conta, metadados de auditoria e flags de conflito (`has_source_conflict`).
-- **Estratégia Futura de Consolidação**: Como os 33 atributos são estáveis, a materialização da fato canônica poderá utilizar `SELECT DISTINCT numero_convenio, <colunas_estaveis>`, sem recorrer a funções heurísticas perigosas (`ROW_NUMBER`, `FIRST`, `MAX` arbitrário) para ocultar divergências.
+- **Estratégia Futura de Consolidação**: Como os 33 atributos são estáveis, a materialização da fato canônica utilizará `SELECT DISTINCT numero_convenio, <colunas_estaveis>`, sem recorrer a funções heurísticas perigosas (`ROW_NUMBER`, `FIRST`, `MAX` arbitrário) para ocultar divergências.
 
 ---
 
@@ -242,7 +246,7 @@ Isso **NÃO é um defeito de software nem erro no SQL**: é uma consequência ma
 Foram mapeados e auditados todos os 19 campos temporais (`DATE`) da camada Silver.
 
 #### Tabela 8.1 — Profiling Temporal das Entidades Silver
-| Entidade / Campo | Total Linhas | NULLs (%) | Data Mínima | Data Máxima | Anos Dist. | < 1990 | > 2050 | Exemplos Outliers |
+| Entidade / Campo | Total Linhas | NULLs (%) | Data Mínima | Data Máxima | Anos Dist. | < 1990 | > 2050 | Exemplos Fora da Janela |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
 | **`proposta.data_proposta`** | 1.157.619 | 0 (0,0%) | 2008-01-01 | 2026-09-15 | 19 | 0 | 0 | *Nenhum* |
 | `proposta.data_inicio_vigencia_proposta` | 1.157.619 | 3 (0,0%) | 0011-06-20 | 2028-07-03 | 36 | 10 | 0 | `0011-06-20`, `0020-05-30`, `1111-01-01` |
@@ -265,57 +269,65 @@ Foram mapeados e auditados todos os 19 campos temporais (`DATE`) da camada Silve
 | `elegibilidade.data_fim_beneficiario` | 1.257.350 | 966.696 (76,9%)| 2009-12-31 | 2026-12-31 | 18 | 0 | 0 | *Nenhum* |
 
 ### 8.2. Interpretação
-As datas nucleares de transação (`data_proposta`, `data_assinatura_convenio`, `data_publicacao_convenio`) operam exclusivamente dentro do intervalo civil contemporâneo válido do SICONV (2001 a 2026).
-No entanto, campos de vigência e janelas de programas sofrem de erros pontuais de digitação humana no sistema de origem, gerando anos anômalos como `0001`, `0011`, `1900` ou `5008`.
+As datas nucleares de transação (`data_proposta`, `data_assinatura_convenio`, `data_publicacao_convenio`) operam exclusivamente dentro do intervalo civil contemporâneo (2001 a 2026).
+Campos de vigência e janelas de elegibilidade contêm ocorrências de anos atípicos como `0001`, `0011`, `1900` ou `5008`.
+Esses valores são **datas sintaticamente parseadas que caem fora da janela analítica candidata**. Não se afirma que sejam "inválidas na origem" nem se atribui causa definitiva sem evidência documental.
+A camada Silver preserva integralmente as datas originais; a camada Gold apenas decide como acomodá-las analiticamente.
 
 ### 8.3. Contrato Analítico para `gold.dim_data`
-- **Classificação**: **`CONFIRMADA`**
+- **Classificação**: **`CONFIRMADA EM PRINCÍPIO (COM RESTRIÇÕES)`**
 - **Grão**: 1 linha por dia de calendário.
-- **Domínio Analítico Aprovado**: `1990-01-01` a `2050-12-31` (~22.280 registros). Não gerar uma dimensão de 5.000 anos para acolher erros pontuais da fonte.
+- **Janela Analítica Candidata**: `1990-01-01` a `2050-12-31` (~22.280 registros). Esta janela é uma decisão de governança analítica candidata que deverá ser ratificada formalmente antes ou durante o marco R4-B.
 - **Chave Primária**: `data_sk` em formato inteiro inteligente `YYYYMMDD` (ex: `20260916`).
 - **Tratamento de Exceções (Chaves Sentinela)**:
-  - `-1`: Data não informada / NULL na Silver.
-  - `-2`: Data fora do domínio analítico válido (< 1990 ou > 2050).
+  - `-1`: `Data Não Informada / NULL` na Silver.
+  - `-2`: `Data Fora da Janela Analítica` (< 1990 ou > 2050).
+- **Preservação de Dados**: Datas fora da janela analítica candidata não são destruídas nem descartadas; suas referências nas fatos recebem a chave `-2` e mantêm o valor original consultável na Silver.
 
 ---
 
 ## 9. Finding G — Matriz de Medidas e Regras de Aditividade
 
-A classificação de aditividade determina como ferramentas de BI (Superset) e usuários SQL podem agregar cada métrica sem corromper as análises.
+A correta classificação de aditividade exige a separação clara de **dois eixos temporais**:
+1. **Tempo de Negócio**: Datas intrínsecas aos eventos administrativos (data de proposta, data de assinatura, início de vigência, ano civil). Essas dimensões particionam instrumentos **dentro do mesmo snapshot**.
+2. **Tempo de Snapshot**: Data/hora de execução da carga que reflete o estado do Lakehouse. O projeto opera atualmente com **snapshot corrente único**. Histórico de snapshots não está implementado.
 
-### 9.1. Distinção Crucial: Snapshot Corrente vs. Séries Temporais
-O Lakehouse opera atualmente com **snapshot corrente qualificado**. Portanto, as medidas de convênio (ex: `valor_empenhado_convenio`) são **aditivas entre convênios no snapshot atual**, mas serão **semi-aditivas ao longo do tempo** caso snapshots históricos venham a ser acumulados no futuro.
+### 9.1. Exemplo Obrigatório: `valor_desembolsado_convenio`
+- **Entre convênios no mesmo snapshot**: **ADITIVA** (a soma de desembolsos de vários convênios resulta no desembolso total daquele conjunto).
+- **Por dimensão de negócio que particiona convênios** (ex: ano de assinatura ou órgão concedente): **ADITIVA** (cada convênio pertence a uma única partição).
+- **Através de Programa N:N**: **NÃO ADITIVA** (um convênio associado a múltiplos programas duplicaria seu desembolso se somado diretamente pela ponte).
+- **Ao longo de múltiplos snapshots históricos**: **NÃO ADITIVA / SEMI-ADITIVA** (o desembolso informado no convênio é um valor acumulado de fluxo; somar snapshots consecutivos geraria duplicação em cascata).
 
-### Tabela 9.1 — Matriz de Aditividade de Medidas
+### Tabela 9.1 — Matriz Exaustiva de Aditividade de Medidas
 
-| Entidade | Medida de Negócio | Tipo de Dado | Aditividade por Entidade | Aditividade Temporal (Snapshot) | Aditividade عبر Programa (Bridge) | Regra de NULL | Classificação Contratual |
-| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Proposta** | `quantidade_propostas` (constante 1) | INT | Aditiva | Aditiva | Não Aditiva | `0` se não houver | **ADITIVA** |
-| **Proposta** | `valor_global_proposta` | DECIMAL(17,2) | Aditiva | Aditiva | Não Aditiva | COALESCE(val, 0) | **ADITIVA** |
-| **Proposta** | `valor_repasse_proposta` | DECIMAL(17,2) | Aditiva | Aditiva | Não Aditiva | COALESCE(val, 0) | **ADITIVA** |
-| **Proposta** | `valor_contrapartida_proposta` | DECIMAL(17,2) | Aditiva | Aditiva | Não Aditiva | COALESCE(val, 0) | **ADITIVA** |
-| **Convênio** | `quantidade_convenios` (constante 1) | INT | Aditiva | Aditiva | Não Aditiva | `0` se não houver | **ADITIVA** |
-| **Convênio** | `valor_global_convenio` | DECIMAL(17,2) | Aditiva | Aditiva | Não Aditiva | COALESCE(val, 0) | **ADITIVA** |
-| **Convênio** | `valor_repasse_convenio` | DECIMAL(17,2) | Aditiva | Aditiva | Não Aditiva | COALESCE(val, 0) | **ADITIVA** |
-| **Convênio** | `valor_contrapartida_convenio` | DECIMAL(17,2) | Aditiva | Aditiva | Não Aditiva | COALESCE(val, 0) | **ADITIVA** |
-| **Convênio** | `valor_empenhado_convenio` | DECIMAL(17,2) | Aditiva | Semi-aditiva (fluxo acumulado) | Não Aditiva | COALESCE(val, 0) | **ADITIVA NO SNAPSHOT** |
-| **Convênio** | `valor_desembolsado_convenio` | DECIMAL(17,2) | Aditiva | Semi-aditiva (fluxo acumulado) | Não Aditiva | COALESCE(val, 0) | **ADITIVA NO SNAPSHOT** |
-| **Convênio** | `valor_saldo_remanescente_tesouro` | DECIMAL(17,2) | Aditiva | Semi-aditiva (saldo pontual) | Não Aditiva | COALESCE(val, 0) | **ADITIVA NO SNAPSHOT** |
-| **Convênio** | `valor_saldo_remanescente_convenente`| DECIMAL(17,2) | Aditiva | Semi-aditiva (saldo pontual) | Não Aditiva | COALESCE(val, 0) | **ADITIVA NO SNAPSHOT** |
-| **Convênio** | `valor_rendimento_aplicacao` | DECIMAL(17,2) | Aditiva | Aditiva | Não Aditiva | COALESCE(val, 0) | **ADITIVA** |
-| **Convênio** | `valor_ingresso_contrapartida` | DECIMAL(17,2) | Aditiva | Aditiva | Não Aditiva | COALESCE(val, 0) | **ADITIVA** |
-| **Convênio** | `valor_global_original_convenio` | DECIMAL(17,2) | Aditiva | Aditiva | Não Aditiva | COALESCE(val, 0) | **ADITIVA** |
-| **Convênio** | `quantidade_termos_aditivos` | INT | Aditiva | Semi-aditiva (acumulado) | Não Aditiva | COALESCE(val, 0) | **ADITIVA NO SNAPSHOT** |
-| **Convênio** | `quantidade_prorrogacoes` | INT | Aditiva | Semi-aditiva (acumulado) | Não Aditiva | COALESCE(val, 0) | **ADITIVA NO SNAPSHOT** |
-| **Convênio** | `valor_saldo_conta` (observação) | DECIMAL(17,2) | Não Aditiva | Não Aditiva | Não Aditiva | Manter original | **NÃO ADITIVA / OBSERVACIONAL** |
+| Entidade | Medida de Negócio | Tipo de Dado | Mesmo Snapshot | Tempo de Negócio | Entre Snapshots Históricos | Via Programa N:N | Regra de NULL | Classificação Contratual |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Proposta** | `quantidade_propostas` (constante 1) | INT | Aditiva | Aditiva | Não Aditiva | Não Aditiva | `0` se não houver | **ADITIVA NO SNAPSHOT** |
+| **Proposta** | `valor_global_proposta` | DECIMAL(17,2) | Aditiva | Aditiva | Não Aditiva | Não Aditiva | COALESCE(val, 0) | **ADITIVA NO SNAPSHOT** |
+| **Proposta** | `valor_repasse_proposta` | DECIMAL(17,2) | Aditiva | Aditiva | Não Aditiva | Não Aditiva | COALESCE(val, 0) | **ADITIVA NO SNAPSHOT** |
+| **Proposta** | `valor_contrapartida_proposta` | DECIMAL(17,2) | Aditiva | Aditiva | Não Aditiva | Não Aditiva | COALESCE(val, 0) | **ADITIVA NO SNAPSHOT** |
+| **Convênio** | `quantidade_convenios` (constante 1) | INT | Aditiva | Aditiva | Não Aditiva | Não Aditiva | `0` se não houver | **ADITIVA NO SNAPSHOT** |
+| **Convênio** | `valor_global_convenio` | DECIMAL(17,2) | Aditiva | Aditiva | Não Aditiva | Não Aditiva | COALESCE(val, 0) | **ADITIVA NO SNAPSHOT** |
+| **Convênio** | `valor_repasse_convenio` | DECIMAL(17,2) | Aditiva | Aditiva | Não Aditiva | Não Aditiva | COALESCE(val, 0) | **ADITIVA NO SNAPSHOT** |
+| **Convênio** | `valor_contrapartida_convenio` | DECIMAL(17,2) | Aditiva | Aditiva | Não Aditiva | Não Aditiva | COALESCE(val, 0) | **ADITIVA NO SNAPSHOT** |
+| **Convênio** | `valor_empenhado_convenio` | DECIMAL(17,2) | Aditiva | Aditiva | Não Aditiva / Semi-aditiva | Não Aditiva | COALESCE(val, 0) | **ADITIVA NO SNAPSHOT** |
+| **Convênio** | `valor_desembolsado_convenio` | DECIMAL(17,2) | Aditiva | Aditiva | Não Aditiva / Semi-aditiva | Não Aditiva | COALESCE(val, 0) | **ADITIVA NO SNAPSHOT** |
+| **Convênio** | `valor_saldo_remanescente_tesouro` | DECIMAL(17,2) | Aditiva | Aditiva | Não Aditiva / Semi-aditiva | Não Aditiva | COALESCE(val, 0) | **ADITIVA NO SNAPSHOT** |
+| **Convênio** | `valor_saldo_remanescente_convenente`| DECIMAL(17,2) | Aditiva | Aditiva | Não Aditiva / Semi-aditiva | Não Aditiva | COALESCE(val, 0) | **ADITIVA NO SNAPSHOT** |
+| **Convênio** | `valor_rendimento_aplicacao` | DECIMAL(17,2) | Aditiva | Aditiva | Não Aditiva (sem histórico) | Não Aditiva | COALESCE(val, 0) | **ADITIVA NO SNAPSHOT** |
+| **Convênio** | `valor_ingresso_contrapartida` | DECIMAL(17,2) | Aditiva | Aditiva | Não Aditiva (sem histórico) | Não Aditiva | COALESCE(val, 0) | **ADITIVA NO SNAPSHOT** |
+| **Convênio** | `valor_global_original_convenio` | DECIMAL(17,2) | Aditiva | Aditiva | Não Aditiva (sem histórico) | Não Aditiva | COALESCE(val, 0) | **ADITIVA NO SNAPSHOT** |
+| **Convênio** | `quantidade_termos_aditivos` | INT | Aditiva | Aditiva | Não Aditiva / Semi-aditiva | Não Aditiva | COALESCE(val, 0) | **ADITIVA NO SNAPSHOT** |
+| **Convênio** | `quantidade_prorrogacoes` | INT | Aditiva | Aditiva | Não Aditiva / Semi-aditiva | Não Aditiva | COALESCE(val, 0) | **ADITIVA NO SNAPSHOT** |
+| **Convênio** | `valor_saldo_conta` (observação) | DECIMAL(17,2) | Não Aditiva | Não Aditiva | Não Aditiva | Não Aditiva | Manter original | **NÃO ADITIVA / OBSERVACIONAL** |
 
 ---
 
 ## 10. Finding H — Linha de Base das Métricas e Indicadores Chave
 
-Os valores abaixo foram calculados dinamicamente sobre o snapshot da Silver:
+Os valores abaixo foram calculados dinamicamente sobre o snapshot da Silver de 16/09/2026 e servem como **baseline histórico de referência do R4-A**, distinguindo-se das regras operacionais dinâmicas de carga.
 
-### 10.1. Métricas Base Canônicas
+### 10.1. Métricas Base Canônicas (Snapshot R4-A)
 - **Quantidade de Propostas**: **1.157.619**
 - **Valor Global Total das Propostas**: **R$ 1.495.209.875.334,42 (R$ 1,495 trilhão)**
 - **Valor de Repasse das Propostas**: **R$ 1.425.758.135.735,63 (R$ 1,425 trilhão)**
@@ -333,8 +345,10 @@ Os valores abaixo foram calculados dinamicamente sobre o snapshot da Silver:
 - **Valor Global Original Conveniado**: **R$ 89.451.880.983,68**
 
 ### 10.2. Indicadores Derivados Aprovados
-- **Taxa de Conveniação**:
-  $$\text{Taxa} = \frac{\text{Propostas Conveniadas Distintas}}{\text{Total de Propostas Distintas}} = \frac{287.584}{1.157.619} = \mathbf{24,8427\%}$$
+- **Taxa de Conveniação Global**:
+  $$\text{Taxa} = \frac{\text{Propostas com Convênio Presentes no Snapshot}}{\text{Total de Propostas Presentes no Snapshot}} = \frac{287.584}{1.157.619} = \mathbf{24,8427\%}$$
+  - *Interpretação*: Proporção das propostas cadastradas no snapshot que possuem instrumento jurídico formalizado associado.
+  - *Limitação*: Não constitui taxa causal de sucesso ou eficácia temporal. Planos de trabalho possuem tempos distintos de tramitação e maturação antes da formalização em convênio.
 - **Ticket Médio por Proposta Apresentada**:
   $$\text{TM}_{\text{prop}} = \frac{\text{R\$ } 1.495.209.875.334,42}{1.157.619} = \mathbf{R\$\ 1.291.625,18}$$
 - **Ticket Médio por Convênio Formalizado**:
@@ -353,9 +367,9 @@ Classificação de prontidão analítica para o Superset:
 | Pergunta Analítica Priorizada | Classificação de Prontidão | Entidades Requeridas | Observações e Cuidados |
 | :--- | :---: | :--- | :--- |
 | **Quantas propostas foram apresentadas por ano?** | **SEGURA COM O CONTRATO ATUAL** | `fct_proposta`, `dim_data` | Agrupamento direto por `ano_proposta` ou `dim_data.ano`. |
-| **Qual o valor global das propostas por UF?** | **SEGURA COM O CONTRATO ATUAL** | `fct_proposta`, `dim_municipio` / `dim_proponente` | Aditivo e consistente. |
-| **Quantas propostas foram formalizadas em convênios?** | **SEGURA COM O CONTRATO ATUAL** | `fct_proposta`, `fct_convenio` | Indicador de conveniação via join 1:1 seguro por `id_proposta`. |
-| **Qual o valor total conveniado por ano de assinatura?** | **SEGURA COM O CONTRATO ATUAL** | `fct_convenio`, `dim_data` | Uso de `data_assinatura_convenio`. |
+| **Qual o valor global das propostas por UF?** | **SEGURA COM O CONTRATO ATUAL** | `fct_proposta`, `dim_municipio` / `dim_proponente` | Aditivo e consistente no snapshot. |
+| **Quantas propostas foram formalizadas em convênios?** | **SEGURA COM O CONTRATO ATUAL** | `fct_proposta`, `fct_convenio` | Relação proposta $\to$ convênio de $1 : 0..1$ via `id_proposta`. |
+| **Qual o valor total conveniado por ano de assinatura?** | **SEGURA COM O CONTRATO ATUAL** | `fct_convenio`, `dim_data` | Uso de `data_assinatura_sk`. |
 | **Qual o valor empenhado e desembolsado por ministério?** | **SEGURA COM O CONTRATO ATUAL** | `fct_convenio`, `fct_proposta`, `dim_orgao` | Agrupamento por órgão superior concedente via role-playing. |
 | **Quais municípios mais captam recursos federais?** | **SEGURA COM O CONTRATO ATUAL** | `fct_convenio`, `fct_proposta`, `dim_municipio` | Baseado no município do proponente beneficiário. |
 | **Qual a distribuição de convênios por situação cadastral?** | **SEGURA COM O CONTRATO ATUAL** | `fct_convenio` | Dimensão degenerada `situacao_convenio` na própria fato. |
@@ -368,17 +382,42 @@ Classificação de prontidão analítica para o Superset:
 ## 12. Finding J — Histórico, Snapshot e SCD
 
 1. **Snapshot Corrente**: As tabelas Bronze e Silver representam o estado corrente das bases operacionais do Transferegov. Não constituem um log completo de mudanças (CDC).
-2. **SCD Type 2**: Não é factível nem metodologicamente honesto criar dimensões com versionamento histórico completo (SCD Tipo 2) a partir de um snapshot corrente único.
-3. **Estabilidade Cadastral**: O profiling comprovou que 100% dos proponentes possuem cadastro idêntico em todas as propostas no snapshot atual. Desta forma, a dimensão `dim_proponente` será modelada como SCD Tipo 1 (sobrescrevendo atributos cadastrais caso novas versões venham a ser ingeridas).
+2. **SCD Type 2**: Não é factível nem metodologicamente honesto criar dimensões com versionamento histórico completo (SCD Tipo 2) a partir de um snapshot corrente único sem fontes de CDC.
+3. **Estabilidade Cadastral**: O profiling comprovou que 100% dos proponentes possuem cadastro idêntico em todas as propostas no snapshot atual. Desta forma, a dimensão `dim_proponente` será modelada como SCD Tipo 1.
 
 ---
 
-## 13. Finding K — Catálogo e Estrutura Física Candidata da Gold
+## 13. Estratégia de Chaves da Gold (Finding K & Governança)
 
-- **Schema**: `gold`
-- **Location**: `s3a://gold/warehouse`
-- **Formato**: `Delta Lake`
-- **Estratégia de Carga no R4 Inicial**: `Full Refresh / Replace` (o particionamento e estratégia incremental serão abordados após validação da estrutura dimensional completa).
-- **Catálogo Hive/Spark**:
-  - Consulta `SHOW DATABASES` atestou que `gold` ainda não existe.
-  - A criação do schema será efetuada no marco R4-B via bootstrap seguro e idempotente.
+O modelo dimensional da Gold adotará uma política explícita de chaves primárias e estrangeiras:
+
+### 13.1. Chaves Naturais Diretas como Chaves Primárias
+Nas dimensões onde a chave natural de negócio da fonte é universalmente estável, única e não sujeita a SCD2 no R4 inicial, **a chave natural será utilizada diretamente como Primary Key**, sem inventar surrogate keys artificiais (`_sk` inteiras geradas):
+- `dim_proponente.identificacao_proponente` (CNPJ / CPF do proponente): PK natural.
+- `dim_municipio.codigo_municipio_ibge` (Código IBGE de 7 dígitos): PK natural.
+- `dim_orgao.codigo_orgao` (Código numérico do órgão): PK natural.
+- `dim_programa.id_programa` (Identificador numérico do programa): PK natural.
+
+*Justificativa*: A introdução de surrogate keys técnicas apenas por formalismo de star-schema adicionaria sobrecarga de lookup/join sem benefício técnico concreto, já que as chaves de negócio são curtas, limpas, altamente seletivas e sem risco de colisão multi-fonte no contexto atual do SICONV.
+
+### 13.2. Chaves Semânticas e Sentinelas em `dim_data`
+A única dimensão que utilizará surrogate key técnica é `dim_data`:
+- `dim_data.data_sk`: Inteiro no formato `YYYYMMDD` (ex: `20260916`), que atua como chave semântica natural de calendário e permite particionamento numérico eficiente.
+- Chaves Sentinela de Exceção:
+  - `-1`: `Data Não Informada / NULL` na fonte.
+  - `-2`: `Data Fora da Janela Analítica` (< 1990 ou > 2050).
+
+---
+
+## 14. R4-A.1 — Fechamento dos Findings da Revisão Humana
+
+Esta seção documenta a resolução formal dos quatro findings e quatro correções apontadas na revisão humana:
+
+1. **Finding 1 (Datas e Janela Analítica)**: O intervalo 1990–2050 foi reclassificado de "domínio válido da fonte" para **Janela Analítica Candidata de Governança**. O código `-2` foi renomeado de "Data Inválida" para **Data Fora da Janela Analítica**. O status de `dim_data` foi ajustado para **CONFIRMADA EM PRINCÍPIO (COM RESTRIÇÕES)**, mantendo a integridade original das datas na Silver.
+2. **Finding 2 (Reconciliação Dinâmica)**: Formalizou-se a separação entre a **Reconciliação Operacional Dinâmica** (obrigatória em todo pipeline Gold entre a Silver corrente e a Gold corrente) e o **Baseline Histórico R4-A** (opcional, para regressão do snapshot de estudo).
+3. **Finding 3 (Aditividade Temporal)**: Delineou-se a separação estrita entre **Tempo de Negócio** (que particiona instrumentos no mesmo snapshot) e **Tempo de Snapshot** (cargas sucessivas do Lakehouse). Todas as 17 medidas e contadores foram reclassificados na matriz exaustiva dos 4 eixos de aditividade.
+4. **Finding 4 (Conformação Plena de Órgão)**: Foi executada e comprovada a terceira comparação cruzada pendente: `concedente proposta` $\leftrightarrow$ `superior programa`. Foram identificados 37 códigos compartilhados com **zero divergências** de descrição textual. Com isso, os 3 pares cruzados atestam 100% de conformidade, sustentando a dimensão única `dim_orgao` com role-playing.
+5. **Correção 1 (Município)**: Removida a inferência de "cobertura total do país", registrando precisamente a observação de **5.570 códigos municipais no snapshot** com relação 1:1 estrita.
+6. **Correção 2 (SIORG)**: Qualificada a afirmação para registrar que os códigos observados são semanticamente consistentes entre os papéis analisados, sem afirmar filiação formal ao SIORG sem evidência externa.
+7. **Correção 3 (Estratégia de Chaves)**: Formalizado o uso de chaves naturais diretas em `dim_proponente`, `dim_municipio`, `dim_orgao` e `dim_programa`, e chave inteira inteligente em `dim_data`.
+8. **Correção 4 (Taxa de Conveniação)**: Redefinida a semântica de taxa causal de sucesso para **proporção de propostas no snapshot com instrumento formalizado**, explicitando a limitação de coortes temporais.
