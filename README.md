@@ -44,4 +44,5 @@ Dashboard Executivo
 - **R2** — Ingestão e camada Bronze dos dados oficiais do Transferegov (concluído / merged).
 - **R3** — Camada Silver implementada e validada (concluído / merged).
 - **R4** — Camada Gold dimensional implementada e validada (concluído / merged).
-- **R5-MVP** — Dashboard executivo Superset baseado em view semântica Gold (implementado na branch / aguardando revisão humana).
+- **R5** — Serving analítico e dashboard executivo Superset (concluído / merged).
+- **R6-A** — Orquestração pós-Bronze implementada na branch e aguardando revisão humana.
