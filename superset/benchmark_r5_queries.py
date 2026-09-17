@@ -92,7 +92,7 @@ def main():
 
     for q_name, sql in QUERIES.items():
         print(f"\n>>> Executando: {q_name} ...")
-        
+
         # Run 1: Primeira execução
         print("  - Execução 1 iniciando...")
         t1, rows1 = run_query(conn, sql)
