@@ -147,7 +147,7 @@ O dashboard dispõe de 8 filtros nativos aplicados a todos os gráficos:
 | **Valor Repasse Proposto** | R$ 1.425.758.135.735,63 | R$ 1.425.758.135.735,63 | **PASS (Tolerância R$ 0,00)** |
 | **Valor Contrapartida Proposta** | R$ 69.451.779.598,79 | R$ 69.451.779.598,79 | **PASS (Tolerância R$ 0,00)** |
 | **Valor Global Conveniado** | R$ 356.840.744.533,16 | R$ 356.840.744.533,16 | **PASS (Tolerância R$ 0,00)** |
-| **Valor Repasse Conveniado** | R$ 334.341.282.802,87 | R$ 334.341.282.802,87 | **PASS (Tolerância R$ 0,00)** |
+| **Valor Repasse Conveniado** | R$ 331.271.766.468,34 | R$ 331.271.766.468,34 | **PASS (Tolerância R$ 0,00)** |
 | **Valor Empenhado** | R$ 192.064.543.060,79 | R$ 192.064.543.060,79 | **PASS (Tolerância R$ 0,00)** |
 | **Valor Desembolsado** | R$ 153.205.012.397,29 | R$ 153.205.012.397,29 | **PASS (Tolerância R$ 0,00)** |
 
@@ -184,8 +184,7 @@ Todos os cenários responderam com consistência analítica e sem qualquer erro 
 1. Abra o navegador e acesse:
    `http://localhost:8088/superset/dashboard/transferencias-visao-geral/`
 2. Credenciais de acesso:
-   - **Usuário**: `admin`
-   - **Senha**: `admin`
+   - Utilize as credenciais administrativas configuradas no ambiente local do Superset.
 3. Navegue pelos cards superiores de KPI, explore os 4 gráficos e utilize os 8 filtros nativos na barra lateral esquerda.
 
 ### 7.2 Reprodução / Importação Automatizada dos Assets
@@ -223,3 +222,14 @@ Como o ambiente do agente opera em modo headless sem servidor gráfico ou navega
 - **Cardinalidade N:N de Programas**: Conforme diretriz contratual, dados de Programa não foram incluídos nesta view para evitar a duplicação de propostas e valores. Um dashboard analítico específico para Programas e Elegibilidade poderá ser concebido futuramente.
 - **Saldos Bancários**: A evolução diária de saldos permanece na tabela fato especializada `fct_convenio_saldo_observacao`.
 - **Mapas e Georreferenciamento**: O dashboard MVP utiliza gráficos de barras ordenados por UF para garantir máxima estabilidade e performance no Spark Thrift Server sem dependência de polígonos GeoJSON externos.
+
+---
+
+## 10. R5-MVP.1 — Correções de revisão humana
+
+Nesta etapa corretiva pré-PR, foram endereçados os seguintes pontos identificados na revisão humana:
+- **Correção do valor documental de repasse**: O valor reconciliado de `valor_repasse_convenio` foi atualizado para **R$ 331.271.766.468,34**, em perfeita paridade com `gold.fct_convenio` e a view semântica `gold.vw_superset_proposta_convenio`.
+- **Remoção de credencial literal**: Eliminada a menção explícita a senhas e usuários padrão no relatório de entrega.
+- **Desativação de renderização HTML na tabela**: A tabela detalhada exibe apenas valores textuais e numéricos da fonte. A renderização HTML foi desabilitada (`allow_render_html: false`) em `superset/setup_r5_assets.py`, no asset versionado `superset/assets/r5_mvp/charts/Detalhamento_de_propostas_e_convenios_12.yaml` e no banco SQLite interno do Superset, por não ser necessária ao dashboard e para reduzir a superfície de interpretação de conteúdo não confiável.
+- **Nova validação dos assets e testes**: Reexecutada com êxito a suíte de 8 testes dbt (`PASS=8 WARN=0 ERROR=0 SKIP=0`), a validação analítica sob 5 cenários com filtros no Superset (`superset/validate_r5_filters.py`) e a integridade de compilação Python.
+- **Rastreabilidade Git**: HEAD inicial da etapa registrado em `31a459b4a5f8f6966fe104d0b3b94e47117a4f70`.

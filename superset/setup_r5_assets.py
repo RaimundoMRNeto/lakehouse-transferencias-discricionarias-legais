@@ -419,7 +419,7 @@ END""",
                 "server_page_length": 25,
                 "order_desc": True,
                 "show_cell_bars": False,
-                "allow_render_html": True,
+                "allow_render_html": False,
                 "extra_form_data": {}
             }
         }

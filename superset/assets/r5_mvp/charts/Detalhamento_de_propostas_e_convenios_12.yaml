@@ -27,7 +27,7 @@ params:
   server_page_length: 25
   order_desc: true
   show_cell_bars: false
-  allow_render_html: true
+  allow_render_html: false
   extra_form_data: {}
 query_context: null
 cache_timeout: null
