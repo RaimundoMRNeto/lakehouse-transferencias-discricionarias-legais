@@ -7,7 +7,7 @@ class TestR7GovernanceContract(unittest.TestCase):
     """
     Contrato automatizado de governança, catálogo de metadados, integridade
     documental e proteção contra vazamento de credenciais locais (R7).
-    
+
     Este teste é estritamente leve, dependendo apenas da biblioteca padrão do
     Python, podendo executar tanto em CI quanto em ambientes locais sem containers.
     """
