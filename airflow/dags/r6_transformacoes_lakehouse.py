@@ -64,7 +64,10 @@ with DAG(
 
         dbt_build_silver = BashOperator(
             task_id="dbt_build_silver",
-            bash_command=f"cd {DBT_DIR} && dbt build --select path:models/silver --profiles-dir .",
+            bash_command=(
+                f"cd {DBT_DIR} && "
+                f"dbt build --select path:models/silver --exclude '*gold*' '*mart*' '*superset*' '*r5*' --profiles-dir ."
+            ),
         )
 
         reconcile_bronze_silver = BashOperator(
@@ -90,6 +93,7 @@ with DAG(
             bash_command=(
                 f"cd {DBT_DIR} && "
                 f"dbt build --select path:models/gold/dimensions path:models/gold/facts path:models/gold/bridges "
+                f"--exclude '*mart*' '*superset*' '*r5*' "
                 f"--profiles-dir ."
             ),
         )
@@ -104,7 +108,7 @@ with DAG(
     with TaskGroup(group_id="serving") as serving_group:
         dbt_build_semantic_view = BashOperator(
             task_id="dbt_build_semantic_view",
-            bash_command=f"cd {DBT_DIR} && dbt build --select vw_superset_proposta_convenio --profiles-dir .",
+            bash_command=f"cd {DBT_DIR} && dbt build --select vw_superset_proposta_convenio --exclude '*mart*' --profiles-dir .",
         )
 
         dbt_build_serving_mart = BashOperator(
