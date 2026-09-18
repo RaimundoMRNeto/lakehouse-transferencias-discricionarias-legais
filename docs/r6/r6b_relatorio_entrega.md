@@ -8,10 +8,10 @@ $$\text{Transferegov (Dados Abertos)} \longrightarrow \text{Bronze (Delta)} \lon
 A DAG `r6_pipeline_transferegov_e2e` unifica os pipelines operacionais da Ingestão Bronze (R2) com as Transformações Analíticas Pós-Bronze (R6-A), estabelecendo os seguintes padrões corporativos:
 1. **Rastreabilidade Determinística E2E**: Propagação coordenada do identificador `ingestion_run_id` (`e2e_{{ ts_nodash }}`) da DAG pai para as DAGs filhas e tabelas de auditoria do Lakehouse.
 2. **Decisão Baseada em Auditoria Persistida**: A ramificação pós-Bronze não utiliza adivinhação nem arquivos voláteis; ela consulta via SQL (PyHive / Spark Thrift Server) o registro persistido na tabela Delta `bronze.ingestion_runs`.
-3. **Curto-Circuito Econômico (NO_CHANGE)**: Quando o portal Transferegov não publica nova atualização de dados, a ingestão conclui com status `NO_CHANGE`, o nó `decidir_pos_bronze` roteia para o ramo `no_change` (*EmptyOperator*) e encerra o pipeline em `SUCCESS` pulando todas as transformações posteriores, economizando 100% dos recursos computacionais de Silver, Gold e Serving.
-4. **Governança Fail-Fast Estrita e Resolução do Finding R6-B-P0**: Eliminação completa do mascaramento de erros na DAG R2 com a introdução da folha `finalizar_execucao_r2` após `limpeza_temporarios` (`ALL_DONE`), assegurando que falhas em tarefas de ingestão resultem em encerramento com `FAILED` na DAG filha e bloqueio instantâneo do orquestrador E2E.
+3. **Curto-Circuito Econômico (NO_CHANGE)**: Quando o portal Transferegov não publica nova atualização de dados, a ingestão conclui com status `NO_CHANGE`, o nó `decidir_pos_bronze` roteia para o ramo `no_change` (*EmptyOperator*) e encerra o pipeline em `SUCCESS` sem executar as transformações de Silver, Gold e Serving.
+4. **Governança Fail-Fast Estrita e Resolução do Finding R6-B-P0**: Correção do cenário de mascaramento de falhas identificado na DAG R2 com a introdução da folha `finalizar_execucao_r2` após `limpeza_temporarios` (`ALL_DONE`), assegurando que falhas em tarefas de ingestão resultem em encerramento com `FAILED` na DAG filha e bloqueiem a continuidade do orquestrador E2E.
 5. **Isolamento de Testes dbt por Camada**: Refinamento cirúrgico dos seletores da DAG R6-A para evitar falsos positivos por execução prematura de testes cruzados entre camadas analíticas.
-6. **Integridade e Reconciliação Total**: 100% de consistência volumétrica (1.157.739 propostas, 287.602 convênios, 1.257.410 programas) e divergência financeira estritamente zerada (R$ 0,00) entre Silver, Gold e Serving Mart.
+6. **Integridade e Reconciliação**: Consistência volumétrica confirmada nos grãos comparáveis entre camadas e divergência financeira de R$ 0,00 nas reconciliações executadas entre Silver, Gold e Serving Mart.
 
 ---
 
@@ -28,6 +28,18 @@ O Lakehouse adota separação estrita de responsabilidades entre computação, a
 | **dbt (data build tool)** | Motor declarativo de modelagem analítica SQL, testes automatizados de unicidade, integridade referencial, regras de negócio e geração da documentação de dados. |
 | **MinIO** | Object storage compatível com S3 estruturado em buckets isolados por camada (`s3a://bronze/`, `s3a://silver/`, `s3a://gold/`). |
 | **Apache Superset** | Camada de *Business Intelligence* e visualização, servindo o Dashboard Executivo sobre a tabela Delta `gold.mart_superset_proposta_convenio`. |
+
+### Contrato dos disparadores inter-DAG
+
+Os dois `TriggerDagRunOperator` utilizam o mesmo contrato de espera síncrona e propagação de estado:
+
+- `wait_for_completion=True`
+- `allowed_states=["success"]`
+- `failed_states=["failed"]`
+- `reset_dag_run=True`
+- `poke_interval=15`
+
+Assim, uma falha na DAG filha é propagada para a tarefa de disparo da DAG controladora, enquanto apenas o estado `success` permite a continuidade do fluxo.
 
 ### Grafo da DAG Master Controller (`r6_pipeline_transferegov_e2e`)
 
@@ -177,7 +189,7 @@ Durante a rodada `r6b_full_1` (anterior ao ajuste de seletores dbt), o seletor `
 - A tarefa `trigger_transformacoes` na DAG pai imediatamente capturou o código de saída de falha da DAG filha.
 - A tarefa de convergência `end` entrou instantaneamente em `upstream_failed`.
 - O `DagRun` `r6b_full_1` foi marcado como `FAILED` pelo scheduler sem intervenção manual.
-- **Conclusão**: O mecanismo de fail-fast estrutural foi comprovado na prática, eliminando 100% de mascaramento de erros.
+- **Conclusão**: O mecanismo de fail-fast estrutural foi comprovado na prática no cenário físico testado, com propagação correta da falha da DAG filha para a DAG controladora.
 
 ---
 
@@ -200,8 +212,8 @@ e2e_20260917T233203 | SUCCESS   | True  | 2026-09-17 06:33:30     | 2026-09-17T2
 | :--- | :---: | :---: | :---: | :---: | :---: |
 | **Propostas (`siconv_proposta`)** | 1.157.739 | 1.157.739 | 1.157.739 (`fct_proposta`) | 1.157.739 (`mart_superset_proposta_convenio`) | **0** |
 | **Convênios (`siconv_convenio`)** | 287.602 | 287.602 | 287.602 (`fct_convenio`) | — | **0** |
-| **Programas (`siconv_programa`)** | 1.257.410 | 53.022 (cadastrais) | 53.022 (`dim_programa`) | — | **0** |
-| **Elegibilidade Programas** | — | 1.257.410 | — | — | **0** |
+| **Programas — elegibilidade** | 1.257.410 linhas Bronze | 1.257.410 (`siconv_programa_elegibilidade`) | — | — | **0 no grão de elegibilidade** |
+| **Programas — cadastro** | 53.022 IDs distintos na Bronze | 53.022 (`siconv_programa_cadastral`) | 53.022 (`dim_programa`) | — | **0 no grão cadastral** |
 | **Ponte Programa-Proposta** | 1.159.095 | 1.159.095 | 1.159.095 (`bridge_programa_proposta`) | — | **0** |
 
 ### 6.3 Reconciliação Financeira Estrita (Tolerância R$ 0,00)
@@ -251,12 +263,12 @@ docker exec airflow airflow dags trigger r6_transformacoes_lakehouse \
 
 ## 8. Conclusão e Parecer de Homologação
 
-Todas as metas funcionais, arquiteturais e de qualidade de dados definidas para a entrega **R6-B** foram atendidas de forma irrestrita:
+As metas funcionais, arquiteturais e de qualidade de dados definidas para o escopo validado da entrega **R6-B** foram atendidas:
 - ✅ DAG Controladora `r6_pipeline_transferegov_e2e` operacional e idempotente.
 - ✅ Curto-circuito econômico `NO_CHANGE` comprovado fisicamente em 1m 52s sem acionamento desnecessário de transformações.
 - ✅ Fluxo `FULL` comprovado fisicamente em 22m 40s com 100% de sucesso nas 18 tarefas encadeadas.
 - ✅ Finding R6-B-P0 sanado com a inclusão de `finalizar_execucao_r2` inspecionando TaskInstances após `limpeza_temporarios`.
-- ✅ Rastreabilidade ponta a ponta implementada com `ingestion_run_id` e validada por 39 testes de contrato.
+- ✅ Rastreabilidade ponta a ponta implementada com `ingestion_run_id` e validada por 39 testes automatizados, entre testes contratuais e unitários.
 - ✅ Reconciliação financeira com R$ 0,00 de divergência em todas as camadas analíticas.
 - ✅ Documentação completa sincronizada no `README.md` e neste relatório.
 
