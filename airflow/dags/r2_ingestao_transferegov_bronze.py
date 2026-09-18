@@ -3,11 +3,14 @@ DAG Airflow: r2_ingestao_transferegov_bronze
 Orquestra a ingestão da camada Bronze das transferências do Transferegov.
 """
 import os
+import re
 from datetime import datetime
 from airflow import DAG
+from airflow.exceptions import AirflowException
 from airflow.models.param import Param
 from airflow.operators.bash import BashOperator
-from airflow.operators.python import BranchPythonOperator
+from airflow.operators.python import BranchPythonOperator, PythonOperator
+from airflow.utils.state import TaskInstanceState
 from airflow.utils.trigger_rule import TriggerRule
 
 default_args = {
@@ -18,9 +21,30 @@ default_args = {
     "retries": 0
 }
 
-# Template seguro para ID de execução sem caracteres inválidos em sistemas de arquivos
-RUN_ID_TEMPLATE = "run_{{ ts_nodash }}"
+# Template seguro para ID de execução: usa ingestion_run_id se informado, senão fallback run_{{ ts_nodash }}
+RUN_ID_TEMPLATE = (
+    "{% if params.ingestion_run_id and params.ingestion_run_id|string|trim != '' %}"
+    "{{ params.ingestion_run_id|string|trim }}"
+    "{% else %}"
+    "run_{{ ts_nodash }}"
+    "{% endif %}"
+)
 FORCE_FLAG_TEMPLATE = "{% if params.force %}--force{% endif %}"
+
+def get_ingestion_run_id(context: dict) -> str:
+    """
+    Resolve o identificador de execução de forma determinística e consistente.
+    Se params.ingestion_run_id for fornecido e não vazio, utiliza-o (validando caracteres seguros).
+    Caso contrário, mantém o padrão retrocompatível run_{ts_nodash}.
+    """
+    params = context.get("params", {})
+    val = params.get("ingestion_run_id")
+    if val and str(val).strip():
+        clean_val = str(val).strip()
+        if not re.match(r"^[A-Za-z0-9_.-]+$", clean_val):
+            raise ValueError(f"ingestion_run_id contém caracteres inválidos para sistema de arquivos: '{clean_val}'")
+        return clean_val
+    return f"run_{context['ts_nodash']}"
 
 def decide_branch(**context):
     """
@@ -28,7 +52,7 @@ def decide_branch(**context):
     Se a execução for classificada como NO_CHANGE, segue para finalizar_no_change;
     caso contrário, segue para o pipeline de ingestão sequencial dos datasets analíticos.
     """
-    run_id = f"run_{context['ts_nodash']}"
+    run_id = get_ingestion_run_id(context)
     decision_file = f"/data/staging/{run_id}/decision.txt"
     legacy_file = f"/data/staging/{run_id}_status.txt"
     target_file = decision_file if os.path.exists(decision_file) else legacy_file
@@ -39,6 +63,35 @@ def decide_branch(**context):
         if content == "STATUS_NO_CHANGE":
             return "finalizar_no_change"
     return "ingestao_siconv_programa"
+
+def verificar_resultado_r2(**context):
+    """
+    Finding R6-B-P0: Preserva o resultado real de falha das tarefas críticas após limpeza_temporarios (ALL_DONE).
+    Inspeciona todas as TaskInstances do DagRun atual. Se qualquer tarefa anterior
+    tiver estado FAILED ou UPSTREAM_FAILED (incluindo limpeza_temporarios), lança AirflowException
+    para garantir que a DAG R2 termine com status FAILED e que o TriggerDagRunOperator downstream
+    detecte a falha e bloqueie as transformações.
+    Tarefas com estado SKIPPED são esperadas e aceitas devido à ramificação condicional.
+    """
+    dag_run = context.get("dag_run")
+    ti_current = context.get("ti")
+    current_task_id = ti_current.task_id if ti_current else "finalizar_execucao_r2"
+
+    if not dag_run:
+        return
+
+    failed_tasks = []
+    for ti in dag_run.get_task_instances():
+        if ti.task_id == current_task_id:
+            continue
+        if ti.state in (TaskInstanceState.FAILED, TaskInstanceState.UPSTREAM_FAILED, "failed", "upstream_failed"):
+            failed_tasks.append(f"{ti.task_id} ({ti.state})")
+
+    if failed_tasks:
+        falhas_str = ", ".join(failed_tasks)
+        raise AirflowException(
+            f"Falha operacional detectada na DAG R2. As seguintes tarefas falharam: {falhas_str}"
+        )
 
 with DAG(
     dag_id="r2_ingestao_transferegov_bronze",
@@ -53,6 +106,12 @@ with DAG(
             default=False,
             type="boolean",
             description="Forçar nova verificação e re-download mesmo que data_carga seja idêntica"
+        ),
+        "ingestion_run_id": Param(
+            default="",
+            type="string",
+            pattern=r"^[A-Za-z0-9_.-]*$",
+            description="Identificador único da execução para rastreabilidade E2E (opcional, caracteres seguros: A-Za-z0-9_.-)"
         )
     },
     tags=["bronze", "r2", "transferegov", "lakehouse"]
@@ -132,6 +191,12 @@ with DAG(
         trigger_rule=TriggerRule.ALL_DONE
     )
 
+    finalizar_execucao_r2 = PythonOperator(
+        task_id="finalizar_execucao_r2",
+        python_callable=verificar_resultado_r2,
+        trigger_rule=TriggerRule.ALL_DONE
+    )
+
     # Definição das dependências do fluxo
     preflight_check >> controle_inicial >> avaliar_necessidade
 
@@ -150,3 +215,6 @@ with DAG(
         >> retencao_raw
         >> limpeza_temporarios
     )
+
+    # Gate final de validação operacional (leaf task)
+    limpeza_temporarios >> finalizar_execucao_r2
