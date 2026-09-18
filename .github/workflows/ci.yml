@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   lakehouse-quality:
-    name: Lakehouse quality checks (R2/R3)
+    name: Lakehouse quality checks
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -85,7 +85,7 @@ jobs:
           print("YAML Transferegov válido.")
           PY
 
-      - name: Run isolated unit tests (R2 + R3)
+      - name: Run isolated unit tests (R2 + R3 + R7)
         working-directory: spark
         env:
           PYTHONPATH: .:..
@@ -96,7 +96,8 @@ jobs:
             tests.test_download_and_s3 \
             tests.test_retention \
             tests.test_audit_safety \
-            tests.test_bootstrap_silver
+            tests.test_bootstrap_silver \
+            tests.test_r7_governance_contract
 
       - name: Validate dbt project (parse)
         working-directory: dbt_lakehouse
@@ -106,5 +107,5 @@ jobs:
       - name: CI scope summary
         if: always()
         run: |
-          echo "CI cobre: whitespace, sintaxe Python (spark/dags/scripts), YAML, testes unitários isolados (R2/R3 bootstrap) e dbt parse do R3."
+          echo "CI cobre: whitespace, sintaxe Python (spark/dags/scripts), YAML, testes unitários isolados (R2/R3/R7) e dbt parse."
           echo "Validações Spark/Delta/MinIO/Airflow e dbt compile/build real permanecem como gates locais do projeto."

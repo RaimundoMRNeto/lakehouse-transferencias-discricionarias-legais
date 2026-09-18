@@ -1,164 +1,199 @@
-# Lakehouse de Transferências Discricionárias e Legais
+# Lakehouse de Transferências Discricionárias e Legais da União
 
 Projeto de Engenharia de Dados baseado em arquitetura Lakehouse moderna para ingestão, tratamento, modelagem dimensional e análise visual de dados públicos de transferências discricionárias e legais da União (Transferegov / SICONV).
 
 ---
 
-## 1. Arquitetura e Papel dos Componentes
+## 1. Objetivo
 
-O Lakehouse adota separação estrita entre computação, armazenamento, orquestração e visualização:
+Consolidar uma plataforma analítica robusta, reprodutível e governada sobre os dados abertos de transferências da União, garantindo fidelidade à fonte primária, rastreabilidade criptográfica, modelagem dimensional em conformidade com as regras de negócio e consumo analítico de alta performance.
 
-| Componente | Função / Papel no Lakehouse |
-| :--- | :--- |
-| **MinIO** | Armazenamento de objetos (Object Storage compatível com S3) distribuído em buckets organizados por camada (`bronze`, `silver`, `gold`). |
-| **Apache Spark** | Engine de processamento distribuído para ingestão da camada Bronze, validação e execução de scripts de bootstrap de catálogos. |
-| **Delta Lake** | Formato de armazenamento colunar aberto com transações ACID, versionamento temporal (*time travel*), enforcement de schema e alta performance de leitura. |
-| **Spark Thrift Server / Hive Metastore** | Catálogo de metadados unificado e interface SQL (porta 10000) permitindo que o dbt e o Superset consultem tabelas Delta via PyHive/Thrift. |
-| **Apache Airflow** | Orquestrador corporativo responsável pelo agendamento, controle de dependências, ramificação condicional inteligente (*BranchPythonOperator*) e governança *fail-fast*. |
-| **dbt (data build tool)** | Motor de modelagem, transformação SQL, testes analíticos automatizados e geração de documentação de dados. |
-| **Apache Superset** | Camada de *Business Intelligence* e visualização, servindo dashboards executivos e métricas financeiras sobre o Serving Mart Delta. |
+---
 
-### Fluxo Analítico de Ponta a Ponta
+## 2. Arquitetura
 
+O projeto adota uma arquitetura em duas visões complementares:
+
+### 2.1 Arquitetura Lógica
 ```text
 Transferegov (Dados Abertos)
-      │
-      ▼
- MinIO: s3a://bronze/ (Delta Lake)
-      │
-      ▼
- MinIO: s3a://silver/ (dbt + Spark)
-      │
-      ▼
- MinIO: s3a://gold/ (dbt Dimensional)
-      │
-      ▼
- Serving Mart (mart_superset_proposta_convenio)
-      │
-      ▼
- Apache Superset (Dashboard Executivo)
+     ↓
+RAW (ZIP Imutável + SHA-256)
+     ↓
+Bronze (Delta Lake, StringType Fiel, Metadados Técnicos)
+     ↓
+Staging (dbt Ephemeral, Tipagem e Normalização)
+     ↓
+Silver (Delta Lake, Grãos Padronizados, Desacoplamento Cadastral)
+     ↓
+Gold Core (Delta Lake, Esquema Estrela: Fatos, Dimensões e Bridge)
+     ↓
+Semantic View (dbt View, Contrato Lógico para BI)
+     ↓
+Serving Mart (Delta Lake, Materialização Física de Alta Performance)
+     ↓
+Apache Superset (Visualização Executiva e BI)
 ```
 
----
-
-## 2. Estrutura do Armazenamento (MinIO)
-
-Os dados são organizados no MinIO sob o prefixo `s3a://`:
-
-- **`s3a://bronze/`**:
-  - `warehouse/siconv_programa/`: tabela Delta Bronze do dataset de programas.
-  - `warehouse/siconv_programa_proposta/`: tabela Delta Bronze da associação programa-proposta.
-  - `warehouse/siconv_proposta/`: tabela Delta Bronze de propostas.
-  - `warehouse/siconv_convenio/`: tabela Delta Bronze de convênios.
-  - `warehouse/ingestion_runs/`: tabela Delta de auditoria de execuções, indexada por `ingestion_run_id`.
-  - `warehouse/ingestion_manifest/`: manifesto Delta com proveniência, SHA-256, arquivo RAW, contagens e versão Delta por dataset.
-  - `raw/transferegov/<dataset>/`: versões dos arquivos ZIP originais baixados da fonte oficial, identificadas por SHA-256 e submetidas à política de retenção.
-- **`s3a://silver/`**:
-  - `warehouse/`: tabelas Delta limpas, tipadas, padronizadas e deduplicadas (`siconv_convenio`, `siconv_programa_cadastral`, `siconv_programa_elegibilidade`, `siconv_programa_proposta`, `siconv_proposta`).
-- **`s3a://gold/`**:
-  - `warehouse/`: modelos dimensionais (star schema: dimensões `dim_data`, `dim_municipio`, `dim_orgao`, `dim_programa`, `dim_proponente`; fatos `fct_convenio`, `fct_convenio_saldo_observacao`, `fct_proposta`; ponte `bridge_programa_proposta`).
-  - Camada de Serving: tabela física Delta `mart_superset_proposta_convenio` e view semântica `vw_superset_proposta_convenio`.
-
----
-
-## 3. DAGs do Apache Airflow
-
-O ambiente conta com 3 DAGs governadas:
-
+### 2.2 Arquitetura Tecnológica
 ```text
-r6_pipeline_transferegov_e2e (Master Controller)
-      ├── [Trigger] r2_ingestao_transferegov_bronze (Ingestão Bronze)
-      └── [Decisão] ──► NO_CHANGE ──► end (curto-circuito econômico)
-                    └──► SUCCESS   ──► [Trigger] r6_transformacoes_lakehouse (Silver/Gold/Serving) ──► end
+                     Apache Airflow (Orquestração E2E)
+                                    │
+                                    │ orquestra
+                                    ▼
+                         Apache Spark + dbt Core
+                                    │
+                  ┌─────────────────┴─────────────────┐
+                  │                                   │
+                  ▼                                   ▼
+          MinIO Object Storage              Spark Thrift / Hive
+        (Armazenamento Delta Lake)          (Catálogo de Metadados)
+                  │                                   │
+                  └─────────────────┬─────────────────┘
+                                    ▼
+                             Apache Superset
 ```
-
-1. **`r2_ingestao_transferegov_bronze`**:
-   - Ingestão dos 4 datasets oficiais do portal Transferegov.
-   - Detecção de modificação por hash e timestamp `data_carga_siconv`.
-   - Limpeza idempotente e registro de auditoria em `bronze.ingestion_runs`.
-   - Leaf task `finalizar_execucao_r2` que preserva o status real de falha (eliminando mascaramento de erros após cleanup).
-   - Suporta parâmetro `ingestion_run_id` para rastreabilidade ponta a ponta.
-
-2. **`r6_transformacoes_lakehouse`**:
-   - Orquestração sequencial e *fail-fast* pós-Bronze:
-     `preflight_dbt >> TaskGroup(silver) >> TaskGroup(gold) >> TaskGroup(serving) >> TaskGroup(documentation) >> end`.
-   - Reconciliações analíticas intermediárias (Bronze $\rightarrow$ Silver e Silver $\rightarrow$ Gold) com 0 divergência tolerada.
-   - Isolamento de testes dbt por camada para garantir execução independente.
-
-3. **`r6_pipeline_transferegov_e2e`** *(DAG Master Controller)*:
-   - Orquestra todo o fluxo analítico de ponta a ponta.
-   - Dispara a ingestão R2 repassando parâmetros e aguarda conclusão com fail-fast.
-   - Inspeciona o registro de auditoria em `bronze.ingestion_runs` via Spark Thrift Server para decidir o fluxo downstream.
-   - Aplica curto-circuito elegante no ramo `no_change` caso o portal oficial não tenha sofrido alterações, evitando processamentos redundantes.
-   - Dispara a DAG `r6_transformacoes_lakehouse` apenas quando houver novos dados ou reprocessamento forçado.
-   - Unifica os caminhos na tarefa `end` com `TriggerRule.NONE_FAILED_MIN_ONE_SUCCESS`.
 
 ---
 
-## 4. Fluxo de Execução: FULL vs. NO_CHANGE
+## 3. Stack Tecnológica
 
-| Característica | Fluxo FULL (`force_bronze=true` ou novos dados) | Fluxo NO_CHANGE (`force_bronze=false` e sem novos dados) |
+| Componente | Função Primária | Papel no Lakehouse |
 | :--- | :--- | :--- |
-| **Gatilho Bronze** | Executado via `r2_ingestao_transferegov_bronze`. | Executado via `r2_ingestao_transferegov_bronze`. |
-| **Comportamento R2** | Baixa CSVs, valida e escreve nas tabelas Delta Bronze. | Detecta hash idêntico em `controle_inicial`, marca `NO_CHANGE`. |
-| **Status em Auditoria** | `SUCCESS` gravado em `bronze.ingestion_runs`. | `NO_CHANGE` gravado em `bronze.ingestion_runs`. |
-| **Decisão E2E** | `decidir_pos_bronze` roteia para `trigger_transformacoes`. | `decidir_pos_bronze` roteia para `no_change` (*EmptyOperator*). |
-| **DAG Transformações** | `r6_transformacoes_lakehouse` disparada e concluída. | **Pulada (*skipped*)** — zero custo computacional. |
-| **Tarefa `end`** | Finaliza como `success`. | Finaliza como `success`. |
-| **Resultado Final** | `SUCCESS` (Lakehouse 100% atualizado). | `SUCCESS` (Auditado sem reprocessamento desnecessário). |
-
-### Rastreabilidade via `ingestion_run_id`
-
-O Master Controller correlaciona três identificadores complementares:
-- **DagRun pai E2E**: por exemplo, `r6b_full_2`.
-- **DagRun filho R2**: `r6b_bronze__<timestamp>`.
-- **`ingestion_run_id` persistente**: `e2e_<timestamp>`, usado como chave em `bronze.ingestion_runs` e no manifesto Bronze.
-- **DagRun filho R6-A**: `r6b_transform__<timestamp>`.
-
-Essa cadeia permite relacionar logs do Airflow, auditoria Bronze, manifestos, tabelas Delta e transformações downstream sem depender de arquivos temporários.
+| **Apache Airflow** | Orquestração de Pipelines | Controle sequencial, branching condicional inteligente e fail-fast operacional (execução sob demanda, `schedule=None`). |
+| **Apache Spark 3.4** | Processamento Distribuído | Processamento distribuído da ingestão Bronze, escrita Delta e suporte às rotinas de reconciliação analítica. |
+| **Delta Lake** | Formato Transacional de Tabelas | Transações ACID, versionamento temporal (*time travel*), enforcement de schema e compactação colunar Parquet. |
+| **MinIO** | Object Storage S3-Compatível | Repositório físico nos buckets `bronze`, `silver` e `gold`; os ZIPs RAW ficam sob o prefixo `bronze/raw/transferegov/`. |
+| **dbt Core (v1.10)** | Transformação e Modelagem | Camadas Staging (ephemeral), Silver, Gold, testes de integridade analítica e compilação do catálogo técnico. |
+| **Spark Thrift Server** | Catálogo e Interface SQL | Exposição JDBC/ODBC (porta 10000) e Hive Metastore conectando dbt e Superset ao Delta Lake. |
+| **Apache Superset** | Consumo Analítico e BI | Dashboards executivos com métricas oficiais e tempos de resposta sub-segundo via Serving Mart. |
 
 ---
 
-## 5. Como Disparar Manualmente
+## 4. Pipeline e Linhagem Ponta a Ponta
 
-### 5.1 Execução Ponta a Ponta Completa (FULL)
-
-Para forçar a ingestão da Bronze e executar todas as transformações subsequentes:
-
-```bash
-docker exec airflow airflow dags trigger r6_pipeline_transferegov_e2e \
-  --run-id r6b_full_manual_$(date +%Y%m%d_%H%M%S) \
-  --conf '{"force_bronze": true}'
-```
-
-### 5.2 Execução com Detecção Automática (NO_CHANGE se não houver dados novos)
-
-Para executar o pipeline respeitando o estado da fonte (curto-circuito econômico):
-
-```bash
-docker exec airflow airflow dags trigger r6_pipeline_transferegov_e2e \
-  --run-id r6b_check_$(date +%Y%m%d_%H%M%S) \
-  --conf '{"force_bronze": false}'
-```
-
-### 5.3 Execução Isolada de Transformações (Pós-Bronze)
-
-Caso a camada Bronze já esteja carregada e seja necessário reprocessar apenas Silver, Gold e Serving:
-
-```bash
-docker exec airflow airflow dags trigger r6_transformacoes_lakehouse \
-  --run-id r6a_manual_$(date +%Y%m%d_%H%M%S)
-```
+A rastreabilidade é mantida em duas granularidades complementares:
+- **Origem**: os ZIPs oficiais recebem SHA-256 e são armazenados em `s3://bronze/raw/transferegov/<dataset>/...`; o manifesto registra arquivo, hash, contagens e versão Delta.
+- **Linhagem por linha**: `__ingestion_run_id`, `__source_file` e `__source_sha256` são preservados na Bronze e na Silver; `fct_convenio_saldo_observacao` também preserva esses metadados por representar a observação física.
+- **Linhagem de modelo/execução**: Gold canônica, Semantic e Serving são rastreadas pelos `ref()` do dbt, quality gates e correlação entre DagRuns e `ingestion_run_id`; essas tabelas não carregam uniformemente os metadados técnicos por linha.
+- **Identificador de correlação**: `ingestion_run_id` é um identificador determinístico e seguro, como `e2e_<timestamp>`, persistido em `bronze.ingestion_runs` e `bronze.ingestion_manifest`.
+- **Detecção de Alteração (`NO_CHANGE`)**: a DAG controladora consulta o estado persistido da ingestão após a verificação de `data_carga_siconv`; se a fonte estiver inalterada, o pipeline encerra sem reconstruir as camadas analíticas.
 
 ---
 
-## 6. Status do Projeto
+## 5. Camadas de Dados
+
+1. **RAW**: Pacotes ZIP originais compactados, com retenção das 2 versões mais recentes (`raw_versions_per_dataset = 2`).
+2. **Bronze**: Tabelas Delta brutas com todos os campos oficiais preservados como `StringType`, adicionados de colunas técnicas de proveniência.
+3. **Staging**: Modelos ephemerais no dbt para conversão controlada de tipos (`try_cast`), parsing de datas brasileiras (`parse_date_br`) e valores monetários para `DECIMAL(17,2)`.
+4. **Silver**: Tabelas Delta padronizadas e desacopladas (`siconv_proposta`, `siconv_programa_cadastral`, `siconv_programa_elegibilidade`, `siconv_programa_proposta`, `siconv_convenio`).
+5. **Gold Core**: Esquema dimensional em estrela com dimensões conformadas (`dim_data`, `dim_proponente`, `dim_municipio`, `dim_orgao`, `dim_programa`), tabelas fato canônicas (`fct_proposta`, `fct_convenio`), tabela fato observacional de saldos (`fct_convenio_saldo_observacao`) e tabela ponte N:N (`bridge_programa_proposta`).
+6. **Semantic View**: View dbt (`vw_superset_proposta_convenio`) preservando propostas sem convênio via LEFT JOIN e blindando regras de aditividade.
+7. **Serving Mart**: Tabela física Delta (`mart_superset_proposta_convenio`) materializada para reduzir o custo de joins em tempo de consulta e mitigar concorrência no BI.
+
+---
+
+## 6. Orquestração no Apache Airflow
+
+O ambiente opera com 3 DAGs integradas com governança fail-fast:
+- **`r6_pipeline_transferegov_e2e`**: DAG Master Controller que gerencia o fluxo global, inspeciona o log de auditoria da ingestão e decide entre o ramo `no_change` ou o disparo da transformação downstream.
+- **`r2_ingestao_transferegov_bronze`**: Ingestão física, validação de ZIPs, escrita Delta Bronze e registro em `bronze.ingestion_runs`.
+- **`r6_transformacoes_lakehouse`**: Execução sequencial pós-Bronze com checkpoints intermediários de reconciliação analítica: `Bronze → Silver` (`reconcile_bronze_silver.py`) e `Silver → Gold` (`reconcile_silver_gold.py`).
+
+> [!NOTE]
+> O deployment atual opera estritamente **sob demanda (`schedule=None`)**. O Airflow provê capacidade de agendamento, mas não há execução cron automática ativa no escopo acadêmico deste projeto.
+
+---
+
+## 7. Governança, Contratos e Qualidade
+
+O projeto conta com um módulo formal de governança documentado em [docs/governanca/README.md](docs/governanca/README.md), abrangendo:
+- **Contratos de Grão e Aditividade**: A relação entre Programa e Proposta é estritamente N:N; a `bridge_programa_proposta` **não é caminho aditivo** para valores financeiros (somente contagem distinta). A coluna `valor_saldo_conta` é uma **medida observacional não aditiva** e está isolada fora do Serving Mart.
+- **Classificação e Minimização de Dados**: Classificação dos atributos em 4 níveis (Público Oficial, Público com Identificador Pessoal Potencial, Metadado Técnico e Dado Derivado Analítico). O atributo `identificacao_proponente` pode conter CPFs de pessoas físicas, exigindo diretrizes de minimização e não reprodução em documentações abertas.
+- **Matriz de Qualidade**: 12 dimensões ativas de controle (integridade criptográfica SHA-256, completude, unicidade, validade, integridade referencial, reconciliação relacional, rastreabilidade e consistência financeira).
+- **Catálogo dbt**: 100% de cobertura documental de modelos e fontes Bronze, livre de contagens voláteis de snapshots históricos.
+
+---
+
+## 8. Dashboard e Visualização (Superset)
+
+O Apache Superset consome diretamente o Serving Mart Delta através do Spark Thrift Server (porta 10000):
+- **Painel Executivo**: Visão consolidada de transferências discricionárias e legais da União.
+- **Indicadores Chave**: Total de propostas submetidas, propostas conveniadas, valores globais, repasses pactuados, valores empenhados e desembolsados.
+- **Filtros Interativos**: Segmentação por ano, Unidade da Federação (UF), órgão superior e modalidade do instrumento.
+
+---
+
+## 9. Como Executar e Reproduzir
+
+### 9.1 Inicializar a Stack
+```bash
+docker compose up -d
+docker compose ps
+```
+
+### 9.2 Endpoints Locais
+- **Apache Airflow**: `http://localhost:8080`
+- **Apache Superset**: `http://localhost:8088`
+- **MinIO Console**: `http://localhost:9001`
+- **Spark Master UI**: `http://localhost:8081`
+- **Spark Thrift Server**: `localhost:10000`
+- **dbt Docs**: `http://localhost:8091` (quando ativado)
+
+### 9.3 Disparar o Pipeline E2E
+```bash
+# Execução padrão com detecção de alteração (NO_CHANGE se não houver dados novos):
+docker exec airflow airflow dags trigger r6_pipeline_transferegov_e2e
+
+# Execução forçando reprocessamento integral (FULL):
+docker exec airflow airflow dags trigger -c '{"force_bronze": true}' r6_pipeline_transferegov_e2e
+```
+
+### 9.4 Gerar e Servir o Catálogo dbt Docs
+```bash
+# Geração dos metadados do catálogo:
+docker exec airflow bash -lc "cd /home/airflow/dbt_lakehouse && dbt docs generate --no-partial-parse --profiles-dir ."
+
+# Servir temporariamente na porta 8091:
+docker exec -d airflow bash -lc "cd /home/airflow/dbt_lakehouse && dbt docs serve --host 0.0.0.0 --port 8091 --profiles-dir ."
+```
+Acesse em: `http://localhost:8091`.
+
+### 9.5 Parar os Serviços
+```bash
+docker compose down
+```
+> [!CAUTION]
+> Não utilize `docker compose down -v` sob risco de exclusão permanente dos dados do MinIO e dos bancos de metadados.
+
+---
+
+## 10. Documentação Completa
+
+Para aprofundamento técnico, consulte os relatórios estruturados:
+- [Módulo de Governança de Dados](docs/governanca/README.md) (R7)
+  - [Políticas de Governança](docs/governanca/governanca_dados.md)
+  - [Catálogo e Contratos de Dados](docs/governanca/catalogo_contratos.md)
+  - [Matriz de Qualidade e Linhagem](docs/governanca/qualidade_linhagem.md)
+  - [Glossário de Termos](docs/governanca/glossario.md)
+  - [Guia de Operação e Reprodutibilidade](docs/governanca/operacao_reprodutibilidade.md)
+  - [Relatório de Entrega R7](docs/governanca/r7_relatorio_entrega.md)
+- [Relatório de Ingestão e Camada Bronze](docs/r2_relatorio_validacao.md) (R2)
+- [Relatórios da Camada Silver](docs/r3/) (R3)
+- [Relatórios da Camada Gold Dimensional](docs/r4/) (R4)
+- [Relatórios da Camada Serving e Superset](docs/r5/) (R5)
+- [Relatórios da Orquestração E2E e Transformações](docs/r6/) (R6-A e R6-B)
+
+---
+
+## 11. Status do Projeto
 
 - **R1** — Infraestrutura Lakehouse (Docker, MinIO, Spark, Thrift, Airflow, Superset) ✅ *merged*
-- **R2** — Ingestão e camada Bronze dos dados oficiais do Transferegov ✅ *merged*
-- **R3** — Camada Silver implementada e validada ✅ *merged*
-- **R4** — Camada Gold dimensional implementada e validada ✅ *merged*
-- **R5** — Serving analítico e dashboard executivo Superset ✅ *merged*
-- **R6-A** — Orquestração pós-Bronze (Silver $\rightarrow$ Gold $\rightarrow$ Serving) ✅ *merged*
-- **R6-B** — Orquestração Ponta a Ponta (Master Controller E2E) 🚧 *concluído para revisão*
-- **R7** — Governança e documentação consolidada ⏳
+- **R2** — Ingestão e Camada Bronze dos Dados Oficiais do Transferegov ✅ *merged*
+- **R3** — Camada Silver Implementada e Validada ✅ *merged*
+- **R4** — Camada Gold Dimensional Implementada e Validada ✅ *merged*
+- **R5** — Serving Analítico e Dashboard Executivo no Superset ✅ *merged*
+- **R6-A** — Orquestração Pós-Bronze (Silver $\rightarrow$ Gold $\rightarrow$ Serving) ✅ *merged*
+- **R6-B** — Orquestração Ponta a Ponta (Master Controller E2E) ✅ *merged*
+- **R7** — Governança, catálogo, linhagem e reprodutibilidade ✅ *concluído e aprovado para PR*
+- **R8** — Auditoria / entrega final ⏳

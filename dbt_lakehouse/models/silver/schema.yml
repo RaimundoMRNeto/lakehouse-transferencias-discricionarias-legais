@@ -7,7 +7,7 @@ models:
       Grão: 1 linha por proposta de trabalho.
       Chave primária: id_proposta (100% única e NOT NULL).
       Origem: bronze.siconv_proposta.
-      Limitações conhecidas: numero_proposta não é único operacionalmente (1.717 colisões legítimas de numeração local).
+      Limitações conhecidas: numero_proposta representa numeração operacional local e não é único globalmente, sendo a unicidade garantida por id_proposta.
     columns:
       - name: id_proposta
         description: "Identificador numérico único e imutável da proposta no Transferegov."
@@ -47,7 +47,7 @@ models:
       Grão: 1 linha por id_programa.
       Chave primária: id_programa (100% única e NOT NULL).
       Origem: bronze.siconv_programa (agrupada via DISTINCT relacional puro).
-      Comprovada dependência funcional 1:1 estrita para todos os 53.018 programas.
+      Comprovada dependência funcional 1:1 estrita entre id_programa, codigo_programa e nome_programa na base oficial.
     columns:
       - name: id_programa
         description: "Identificador lógico do programa governamental no Transferegov."
@@ -92,7 +92,7 @@ models:
       Tabela associativa Silver mantendo a relação N:N entre Programas e Propostas de trabalho.
       Grão: 1 linha por vínculo associativo Programa × Proposta.
       Chave natural: par composto (id_programa, id_proposta) (100% único e NOT NULL).
-      Limitações conhecidas: Contém 3 propostas órfãs históricas documentadas (321453, 1427146, 296629).
+      Limitações conhecidas: Presença de propostas órfãs na relação associativa oficial que não possuem correspondência cadastral na entidade siconv_proposta.
     columns:
       - name: id_programa
         description: "Identificador do programa vinculado."
@@ -113,8 +113,8 @@ models:
       Tabela Silver de instrumentos de repasse / convênios formalizados.
       Grão: 1 observação do instrumento de transferência presente no snapshot oficial.
       Chave técnica da observação: id_convenio_observacao (SHA-256 determinístico das 40 colunas oficiais).
-      Chave de negócio: numero_convenio (NOT NULL, NÃO é estritamente único: 287.584 distintos para 287.586 linhas).
-      Conflitos conhecidos: 2 chaves com 2 observações concorrentes legítimas de mesmo run e datas idênticas (949286 e 956078), diferindo unicamente em valor_saldo_conta. Não existe critério objetivo de recência, preservando-se as 287.586 observações.
+      Chave de negócio: numero_convenio (NOT NULL, sujeito a múltiplas observações físicas concorrentes no snapshot oficial).
+      Conflitos conhecidos: Convênios com observações concorrentes legítimas de mesmo run diferindo unicamente em valor_saldo_conta. Na ausência de critério objetivo de recência na fonte, a camada Silver preserva todas as observações físicas com chave técnica id_convenio_observacao.
     columns:
       - name: id_convenio_observacao
         description: "Chave técnica determinística SHA-256 sobre todas as 40 colunas oficiais da observação."
@@ -123,7 +123,7 @@ models:
           - unique
 
       - name: numero_convenio
-        description: "Número operacional do instrumento de transferência (chave de negócio, NÃO única neste snapshot)."
+        description: "Número operacional do instrumento de transferência (chave de negócio, sujeita a múltiplas observações no snapshot)."
         tests:
           - not_null
 
