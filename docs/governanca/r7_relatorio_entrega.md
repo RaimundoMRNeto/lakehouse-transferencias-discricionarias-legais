@@ -108,6 +108,6 @@ Após a primeira revisão humana do R7, a documentação foi alinhada ao código
 
 A governança do Lakehouse atinge maturidade formal, documentando de ponta a ponta as garantias de qualidade, integridade referencial, rastreabilidade e reprodutibilidade exigidas para a apresentação acadêmica.
 
-**Status Técnico do dbt Docs**: PASS (HTTP 200)  
-**Status do Gate Visual Humano**: PASS — inspeção do Lineage Graph confirmou a cadeia Source Bronze → Staging → Silver → Gold → Semantic → Serving, com testes downstream visíveis. A ausência da bridge Programa-Proposta no lineage do Serving é esperada, pois o contrato semântico exclui o caminho N:N para preservar a aditividade.  
+**Status Técnico do dbt Docs**: PASS (HTTP 200)
+**Status do Gate Visual Humano**: PASS — inspeção do Lineage Graph confirmou a cadeia Source Bronze → Staging → Silver → Gold → Semantic → Serving, com testes downstream visíveis. A ausência da bridge Programa-Proposta no lineage do Serving é esperada, pois o contrato semântico exclui o caminho N:N para preservar a aditividade.
 **Resultado da Etapa R7**: **R7 APROVADO PARA PR**
