@@ -92,7 +92,19 @@ Foram criados no diretório `docs/governanca/` os seguintes artefatos padronizad
 
 ---
 
-## 8. Conclusão e Gate Final
+## 8. Ajustes de Precisão Pós-Revisão Humana
+
+Após a primeira revisão humana do R7, a documentação foi alinhada ao código e à infraestrutura efetivamente implantados:
+
+- paths físicos do MinIO corrigidos para os buckets `bronze`, `silver` e `gold`, com RAW sob `bronze/raw/transferegov/`;
+- IDs oficiais das DAGs corrigidos para `r6_pipeline_transferegov_e2e`, `r2_ingestao_transferegov_bronze` e `r6_transformacoes_lakehouse`;
+- `ingestion_run_id` documentado como identificador determinístico de correlação, e não UUID;
+- esquema de `bronze.ingestion_runs` e `bronze.ingestion_manifest` alinhado aos nomes reais dos campos persistidos;
+- linhagem separada entre proveniência por linha (Bronze/Silver e fato observacional) e linhagem de modelo/execução (Gold canônica/Semantic/Serving);
+- fluxo operacional corrigido para refletir a ordem real do R6-A: `dbt build Silver → reconcile Bronze/Silver → dbt build Gold → reconcile Silver/Gold → Semantic → Serving → dbt Docs`;
+- runbook ajustado para recomendar as DAGs governadas, deixando claro que comandos dbt diretos não substituem os quality gates.
+
+## 9. Conclusão e Gate Final
 
 A governança do Lakehouse atinge maturidade formal, documentando de ponta a ponta as garantias de qualidade, integridade referencial, rastreabilidade e reprodutibilidade exigidas para a apresentação acadêmica.
 

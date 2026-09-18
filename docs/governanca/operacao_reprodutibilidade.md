@@ -39,7 +39,7 @@ docker compose ps
 
 Todos os serviços a seguir devem apresentar status `Up` ou `Up (healthy)`:
 - `minio`: Object storage S3 compatível.
-- `mc`: Utilitário de inicialização de buckets e políticas do MinIO.
+- `mc`: Utilitário de inicialização dos buckets `bronze`, `silver` e `gold` no MinIO.
 - `airflow-db`: Banco de dados relacional PostgreSQL do Airflow.
 - `airflow`: Agendador, executor e webserver do Apache Airflow.
 - `spark-master`: Nó mestre do cluster Apache Spark 3.4.
@@ -56,7 +56,7 @@ Os serviços do Lakehouse expõem as seguintes interfaces Web no ambiente local 
 | Serviço | URL de Acesso Local | Finalidade Operacional |
 | :--- | :--- | :--- |
 | **Apache Airflow** | `http://localhost:8080` | Interface de orquestração, monitoramento de DAGs e inspeção de logs. |
-| **MinIO Console** | `http://localhost:9001` | Interface gráfica de auditoria de buckets (`raw`, `bronze`, `silver`, `gold`). |
+| **MinIO Console** | `http://localhost:9001` | Interface gráfica dos buckets `bronze`, `silver` e `gold`; os ZIPs RAW ficam sob `bronze/raw/transferegov/`. |
 | **Spark Master UI** | `http://localhost:8081` | Monitoramento de jobs Spark, estágios de computação e uso de memória. |
 | **Apache Superset** | `http://localhost:8088` | Visualização de painéis e dashboards executivos de transferências da União. |
 | **dbt Docs** | `http://localhost:8091` | Servidor interativo do catálogo de dados, descrições e grafo de linhagem. |
@@ -73,7 +73,7 @@ Para garantir a integridade dos dados e a validação contínua da governança, 
 
 ```mermaid
 flowchart TD
-    S1["1. Disparar DAG E2E (dag_lakehouse_e2e)"] --> S2["2. Conferir Status da DagRun (SUCCESS ou NO_CHANGE)"]
+    S1["1. Disparar DAG E2E (r6_pipeline_transferegov_e2e)"] --> S2["2. Conferir Status da DagRun (SUCCESS ou NO_CHANGE)"]
     S2 --> S3["3. Auditar ingestion_run_id em bronze.ingestion_runs"]
     S3 --> S4["4. Verificar Aprovação dos Quality Gates (Reconciliação e Testes dbt)"]
     S4 --> S5["5. Compilar dbt Docs (dbt docs generate)"]
@@ -85,28 +85,24 @@ flowchart TD
 Acesse `http://localhost:8080` ou execute via linha de comando no container do Airflow:
 
 ```bash
-docker exec airflow airflow dags trigger dag_lakehouse_e2e
+docker exec airflow airflow dags trigger r6_pipeline_transferegov_e2e
 ```
 
 - Se a fonte governamental estiver inalterada desde a última carga, o pipeline encerrará rapidamente com status `NO_CHANGE`.
 - Para forçar uma ingestão integral (reprocessamento de validação), forneça a configuração `force_bronze`:
 
 ```bash
-docker exec airflow airflow dags trigger -c '{"force_bronze": true}' dag_lakehouse_e2e
+docker exec airflow airflow dags trigger -c '{"force_bronze": true}' r6_pipeline_transferegov_e2e
 ```
 
 ### 5.2 Execução Apenas de Transformações (Camadas Downstream)
 Se a camada Bronze já estiver carregada e você desejar reprocessar apenas as camadas Silver, Gold e Serving:
 
 ```bash
-docker exec airflow airflow dags trigger dag_lakehouse_transformation
+docker exec airflow airflow dags trigger r6_transformacoes_lakehouse
 ```
 
-Ou diretamente via dbt no container do Airflow:
-
-```bash
-docker exec airflow bash -lc "cd /home/airflow/dbt_lakehouse && dbt run --profiles-dir ."
-```
+Esse é o caminho governado para reprocessamento downstream porque mantém os quality gates e a sequência definida na DAG. Uma execução direta de comandos dbt pode ser útil para desenvolvimento/diagnóstico, mas **não é equivalente ao pipeline governado** e não substitui as reconciliações do Airflow.
 
 ---
 

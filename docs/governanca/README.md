@@ -52,8 +52,8 @@ A governança do projeto é suportada ativamente pela infraestrutura tecnológic
 - Consulte [operacao_reprodutibilidade.md](operacao_reprodutibilidade.md#5-catalogo-interativo-dbt-docs) para instruções de inicialização.
 
 ### 4.2 Apache Airflow (Orquestração e Linhagem Operacional)
-- A orquestração das DAGs (`dag_lakehouse_e2e`, `dag_lakehouse_ingestion`, `dag_lakehouse_transformation`) provê a linhagem operacional de ponta a ponta.
-- Os identificadores de execução (`ingestion_run_id`) conectam os snapshots brutos ingeridos em `bronze.ingestion_runs` e `bronze.ingestion_manifest` a todas as tabelas Silver, Gold e Serving downstream.
+- A orquestração das DAGs (`r6_pipeline_transferegov_e2e`, `r2_ingestao_transferegov_bronze`, `r6_transformacoes_lakehouse`) provê a linhagem operacional de ponta a ponta.
+- O `ingestion_run_id` conecta DagRuns, auditoria Bronze e manifestos. Os metadados técnicos por linha são preservados até a Silver (e na fato observacional de saldo); Gold canônica, Semantic e Serving mantêm linhagem em nível de modelo/execução por meio do dbt e dos quality gates.
 
 ### 4.3 Relação com os Relatórios Técnicos R2–R6
 Os relatórios anteriores contêm as evidências históricas e descobertas empíricas de cada ciclo:

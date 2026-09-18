@@ -50,7 +50,7 @@ Adota-se uma taxonomia objetiva de quatro níveis para categorizar todos os dado
 | :--- | :--- | :--- | :--- |
 | **Público Oficial** | Dados administrativos originários de publicações governamentais de acesso irrestrito. | `numero_convenio`, `objeto_proposta`, `valor_global_convenio`, `situacao_convenio`, `nome_programa`. | Livre trânsito na plataforma; conformidade de formato e tipo. |
 | **Público com Identificador Pessoal Potencial** | Dados públicos que podem conter identificadores diretos de pessoas físicas (proponentes individuais). | `identificacao_proponente` (CNPJ de pessoa jurídica ou CPF de pessoa física), `nome_proponente`. | Minimização em apresentações acadêmicas; proibição de publicação de listas de CPFs reais em documentações abertas. |
-| **Metadado Técnico** | Atributos internos de controle, rastreabilidade, hash criptográfico e versionamento. | `__ingested_at_utc`, `__ingestion_run_id`, `__source_file`, `__source_sha256`, `delta_version`. | Preservação obrigatória em todas as camadas; integridade de auditoria. |
+| **Metadado Técnico** | Atributos internos de controle, rastreabilidade, hash criptográfico e versionamento. | `__ingested_at_utc`, `__ingestion_run_id`, `__source_file`, `__source_sha256`, `delta_version`. | Preservação conforme o contrato do ativo: metadados por linha em Bronze/Silver e na fato observacional; metadados de execução/modelo para Gold canônica, Semantic e Serving. |
 | **Dado Derivado Analítico** | Métricas calculadas, flags de negócio, conformações dimensionais e materializações analíticas. | `data_sk`, `is_instrumento_ativo`, `tem_convenio`, `quantidade_propostas`, `mart_superset_proposta_convenio`. | Sujeição a testes de consistência, testes de regressão e validação semântica. |
 
 ### 4.1 Governança de Identificadores Pessoais
@@ -80,27 +80,27 @@ flowchart TD
 ```
 
 ### 5.1 RAW
-- **Armazenamento**: Bucket MinIO (`s3a://lakehouse-raw/transferegov/`).
+- **Armazenamento**: prefixo RAW no bucket Bronze (`s3://bronze/raw/transferegov/<dataset>/...`).
 - **Natureza**: Arquivo ZIP original baixado diretamente da URL oficial do Transferegov.
 - **Governança**: Imutabilidade lógica estrita. Todo arquivo recebe cômputo de hash SHA-256 imediatamente após o download.
 - **Retenção**: Política de retenção de 2 versões (`raw_versions_per_dataset = 2`), mantendo o snapshot atual e o imediatamente anterior para permitir comparações físicas e rollbacks operacionais.
 
 ### 5.2 Bronze
-- **Armazenamento**: Bucket MinIO (`s3a://lakehouse-bronze/siconv/`).
+- **Armazenamento**: tabelas Delta sob `s3a://bronze/warehouse/<dataset>`.
 - **Formato**: Tabelas transacionais Delta Lake (`bronze.siconv_*`).
-- **Tipagem**: Todos os campos originários da fonte são mantidos estritamente como `StringType` (delimitador `;`, encoding UTF-8 / latin-1 tratado na ingestão). Isso blinda o pipeline contra quebras estruturais causadas por mutações repentinas de tipo na fonte.
+- **Tipagem**: Os campos oficiais são mantidos como `StringType`; a configuração vigente utiliza delimitador `;` e encoding `utf-8-sig`. A tipagem de negócio ocorre somente a partir de Staging.
 - **Metadados Obrigatórios**: Toda linha física recebe:
   - `__ingested_at_utc`: Timestamp da captura.
-  - `__ingestion_run_id`: UUID de correlação da execução.
-  - `__source_file`: Nome exato do arquivo CSV dentro do pacote ZIP.
+  - `__ingestion_run_id`: identificador determinístico de correlação da execução.
+  - `__source_file`: nome do arquivo ZIP oficial associado à carga da linha.
   - `__source_sha256`: Hash do arquivo original garantindo integridade criptográfica.
 
 ### 5.3 Staging
 - **Materialização**: `ephemeral` (dbt). Não gera tabelas físicas no MinIO, existindo apenas como CTEs / subconsultas durante a compilação e execução da camada Silver.
-- **Papel**: Ponto único de tipagem (`try_cast`), conversão de datas brasileiras (`parse_date_br`), tratamento de strings vazias (`clean_string`) e conversão segura de moedas para `DECIMAL(17,2)`. Propaga integralmente os metadados técnicos de linhagem.
+- **Papel**: Ponto único de tipagem (`try_cast`), conversão de datas brasileiras (`parse_date_br`), tratamento de strings vazias (`clean_string`) e conversão segura de moedas para `DECIMAL(17,2)`. Propaga os metadados técnicos de linhagem para a Silver.
 
 ### 5.4 Silver
-- **Armazenamento**: Bucket MinIO (`s3a://lakehouse-silver/siconv/`).
+- **Armazenamento**: tabelas Delta sob `s3a://silver/warehouse/`.
 - **Formato**: Delta Lake (`silver.siconv_*`).
 - **Estrutura**: Desacoplamento de entidades complexas e resolução de inconsistências de grão:
   - `siconv_proposta`: 1 linha por proposta de trabalho (`id_proposta`).
@@ -110,7 +110,7 @@ flowchart TD
   - `siconv_convenio`: 1 observação do instrumento no snapshot oficial (`id_convenio_observacao`), preservando observações concorrentes legítimas.
 
 ### 5.5 Gold Core
-- **Armazenamento**: Bucket MinIO (`s3a://lakehouse-gold/`).
+- **Armazenamento**: ativos Gold sob `s3a://gold/warehouse/` quando materializados fisicamente.
 - **Formato**: Delta Lake (`gold.dim_*`, `gold.fct_*`, `gold.bridge_*`).
 - **Modelagem Dimensional**: Esquema estrela estendido com separação funcional rigorosa:
   - Dimensão de calendário `dim_data` com sentinelas estruturais (-1 Não Informado, -2 Fora da Janela Analítica).
@@ -134,7 +134,7 @@ flowchart TD
 
 - **Política de Freshness**: O pipeline é **source-driven** (orientado à atualização da fonte oficial).
 - **Sem Agendamento Automático (Cron)**: O deployment atual opera estritamente sob demanda (`schedule=None` no Apache Airflow). Não existe agendamento noturno ou horário fixo pré-determinado no escopo acadêmico.
-- **Detecção de Mudança**: A cada disparo manual da DAG E2E (`dag_lakehouse_e2e`), o pipeline inspeciona os cabeçalhos e a data de modificação da fonte (`data_carga_siconv`).
+- **Detecção de Mudança**: A cada disparo manual da DAG E2E (`r6_pipeline_transferegov_e2e`), o pipeline inspeciona os cabeçalhos e a data de modificação da fonte (`data_carga_siconv`).
   - Se a fonte não tiver sido atualizada desde a última ingestão bem-sucedida, o pipeline sinaliza `NO_CHANGE` e encerra com segurança, economizando recursos computacionais e preservando o estado íntegro do Lakehouse.
   - Se houver novo lote, o pipeline executa o ciclo de ingestão e atualização completa das tabelas Delta.
 
@@ -142,44 +142,22 @@ flowchart TD
 
 ## 7. Ciclo de Vida e Política de Promoção de Dados
 
-A passagem de um lote de dados entre as camadas do Lakehouse é condicionada à aprovação em Quality Gates sucessivos:
+A promoção ocorre na ordem real implementada pela DAG `r6_transformacoes_lakehouse`:
 
 ```mermaid
 flowchart LR
-    subgraph Ingestao ["1. Ingestão"]
-        B[Bronze]
-    end
-    subgraph Gate1 ["Gate 1"]
-        G1{reconcile_bronze_silver.py\nPASS}
-    end
-    subgraph SilverL ["2. Padronização"]
-        S[Silver]
-    end
-    subgraph Gate2 ["Gate 2"]
-        G2{reconcile_silver_gold.py\nPASS}
-    end
-    subgraph GoldL ["3. Dimensional"]
-        G[Gold Core]
-    end
-    subgraph Gate3 ["Gate 3"]
-        G3{dbt tests + serving\nPASS}
-    end
-    subgraph ServingL ["4. Publicação"]
-        M[Serving Mart]
-    end
-
-    B --> G1
-    G1 -->|Sucesso| S
-    G1 -->|Falha| F1[Abort Pipeline / Alert]
-    S --> G2
-    G2 -->|Sucesso| G
-    G2 -->|Falha| F2[Abort Pipeline / Alert]
-    G --> G3
-    G3 -->|Sucesso| M
-    G3 -->|Falha| F3[Abort Pipeline / Alert]
+    B[Bronze válida] --> S[dbt build Silver]
+    S --> G1{reconcile_bronze_silver.py\nPASS}
+    G1 -->|Sucesso| G[dbt build Gold Core]
+    G1 -->|Falha| F1[Fail-fast / downstream bloqueado]
+    G --> G2{reconcile_silver_gold.py\nPASS}
+    G2 -->|Sucesso| V[dbt build Semantic View]
+    G2 -->|Falha| F2[Fail-fast / downstream bloqueado]
+    V --> M[dbt build Serving Mart]
+    M --> D[dbt docs generate]
 ```
 
-Nenhuma camada downstream é considerada promovida caso o gate correspondente reporte qualquer discrepância ou teste com status `FAIL`.
+Os reconciliadores executam **depois** da materialização da camada que validam. Uma falha bloqueia as etapas downstream; o pipeline não implementa rollback transacional entre camadas, portanto objetos já materializados antes da falha não são revertidos automaticamente.
 
 ---
 
@@ -196,21 +174,25 @@ Nenhuma camada downstream é considerada promovida caso o gate correspondente re
 O Lakehouse mantém auditabilidade profunda em dois níveis complementares:
 
 ### 9.1 bronze.ingestion_runs (Nível Execução Global)
-Registra cada invocação do pipeline de ingestão:
-- `run_id`: UUID único da execução.
-- `started_at_utc` / `completed_at_utc`: Janela temporal da execução.
-- `status`: Estado consolidado (`RUNNING`, `SUCCESS`, `NO_CHANGE`, `FAILED`).
-- `trigger_type`: Modo de acionamento (`AIRFLOW_E2E`, `MANUAL`, etc.).
+Registra o estado consolidado de cada execução de ingestão. Entre os campos persistidos estão:
+- `ingestion_run_id`: identificador determinístico e seguro da execução.
+- `start_time_utc` / `end_time_utc`: janela temporal da execução.
+- `status`: estado consolidado (`RUNNING`, `SUCCESS`, `NO_CHANGE` ou `FAILED`).
+- `force`: indicador de reprocessamento forçado.
+- `source_data_carga_raw_initial` / `source_data_carga_raw_final`: valores brutos do controle oficial observados no início e no fim.
+- `successful_datasets`, `error_message` e `retention_status`: evidências operacionais da execução.
 
 ### 9.2 bronze.ingestion_manifest (Nível Arquivo / Dataset)
-Registra a evidência física detalhada de cada arquivo extraído:
-- `run_id`: Vínculo com a execução global.
-- `dataset_name`: Nome da tabela (ex: `siconv_proposta`).
-- `source_url`: URL oficial de onde o arquivo foi baixado.
-- `source_sha256`: Hash criptográfico SHA-256 do arquivo fonte.
-- `delta_version`: Versão da tabela Delta produzida pelo Spark.
-- `logical_input_rows`: Contagem de linhas lidas do CSV.
-- `delta_output_rows`: Contagem de linhas gravadas na tabela Delta.
+Registra a evidência detalhada por dataset e execução. Entre os campos persistidos estão:
+- `ingestion_run_id`: vínculo com a execução global.
+- `dataset_id`: identificador do dataset.
+- `source_url`, `source_zip_file` e `source_member_file`: proveniência física da fonte.
+- `source_sha256`: hash SHA-256 do ZIP oficial associado ao dataset.
+- `retrieved_at_utc` / `ingested_at_utc`: timestamps técnicos.
+- `logical_input_rows` / `delta_output_rows`: contagens de entrada e saída.
+- `raw_s3_key`: chave do objeto RAW no MinIO.
+- `delta_table_path` / `delta_version`: localização e versão Delta produzida.
+- `status`, `reuse_reason`, `original_run_id` e `retention_status`: estado e histórico de reaproveitamento/retenção.
 
 ---
 

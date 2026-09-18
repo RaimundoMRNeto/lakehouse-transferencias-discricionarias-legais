@@ -1,4 +1,4 @@
-# Lakehouse de Transferências Discricionarias e Legais da União
+# Lakehouse de Transferências Discricionárias e Legais da União
 
 Projeto de Engenharia de Dados baseado em arquitetura Lakehouse moderna para ingestão, tratamento, modelagem dimensional e análise visual de dados públicos de transferências discricionárias e legais da União (Transferegov / SICONV).
 
@@ -6,7 +6,7 @@ Projeto de Engenharia de Dados baseado em arquitetura Lakehouse moderna para ing
 
 ## 1. Objetivo
 
-Consolidar uma plataforma analítica robusta, reprodutível e governada sobre os dados abertos de transferências da União, garantindo fidelidade à fonte primária, rastreabilidade criptográfica, modelagem dimensional dimensional em conformidade com as regras de negócio e consumo analítico de alta performance.
+Consolidar uma plataforma analítica robusta, reprodutível e governada sobre os dados abertos de transferências da União, garantindo fidelidade à fonte primária, rastreabilidade criptográfica, modelagem dimensional em conformidade com as regras de negócio e consumo analítico de alta performance.
 
 ---
 
@@ -61,9 +61,9 @@ Apache Superset (Visualização Executiva e BI)
 | Componente | Função Primária | Papel no Lakehouse |
 | :--- | :--- | :--- |
 | **Apache Airflow** | Orquestração de Pipelines | Controle sequencial, branching condicional inteligente e fail-fast operacional (execução sob demanda, `schedule=None`). |
-| **Apache Spark 3.4** | Processamento Distribuído | Ingestão paralela da Bronze, hashing SHA-256 e scripts de reconciliação analítica. |
+| **Apache Spark 3.4** | Processamento Distribuído | Processamento distribuído da ingestão Bronze, escrita Delta e suporte às rotinas de reconciliação analítica. |
 | **Delta Lake** | Formato Transacional de Tabelas | Transações ACID, versionamento temporal (*time travel*), enforcement de schema e compactação colunar Parquet. |
-| **MinIO** | Object Storage S3-Compatível | Repositório físico de arquivos brutos e tabelas Delta estruturadas por camadas (`raw`, `bronze`, `silver`, `gold`). |
+| **MinIO** | Object Storage S3-Compatível | Repositório físico nos buckets `bronze`, `silver` e `gold`; os ZIPs RAW ficam sob o prefixo `bronze/raw/transferegov/`. |
 | **dbt Core (v1.10)** | Transformação e Modelagem | Camadas Staging (ephemeral), Silver, Gold, testes de integridade analítica e compilação do catálogo técnico. |
 | **Spark Thrift Server** | Catálogo e Interface SQL | Exposição JDBC/ODBC (porta 10000) e Hive Metastore conectando dbt e Superset ao Delta Lake. |
 | **Apache Superset** | Consumo Analítico e BI | Dashboards executivos com métricas oficiais e tempos de resposta sub-segundo via Serving Mart. |
@@ -72,10 +72,12 @@ Apache Superset (Visualização Executiva e BI)
 
 ## 4. Pipeline e Linhagem Ponta a Ponta
 
-A rastreabilidade dos dados é mantida pela correlação contínua de metadados técnicos:
-- **Origem**: Arquivos oficiais baixados do portal público recebem cálculo de hash SHA-256 e são armazenados no MinIO RAW.
-- **Rastreabilidade**: Todo lote gera um `ingestion_run_id` (UUID) persistido em `bronze.ingestion_runs` e `bronze.ingestion_manifest`, propagado pelas colunas técnicas `__ingestion_run_id`, `__source_file` e `__source_sha256` até as tabelas Silver, Gold e Serving.
-- **Detecção de Alteração (`NO_CHANGE`)**: A DAG controladora compara o timestamp `data_carga_siconv` da fonte; caso a base esteja inalterada, o pipeline encerra em curto-circuito econômico sem reprocessamento redundante.
+A rastreabilidade é mantida em duas granularidades complementares:
+- **Origem**: os ZIPs oficiais recebem SHA-256 e são armazenados em `s3://bronze/raw/transferegov/<dataset>/...`; o manifesto registra arquivo, hash, contagens e versão Delta.
+- **Linhagem por linha**: `__ingestion_run_id`, `__source_file` e `__source_sha256` são preservados na Bronze e na Silver; `fct_convenio_saldo_observacao` também preserva esses metadados por representar a observação física.
+- **Linhagem de modelo/execução**: Gold canônica, Semantic e Serving são rastreadas pelos `ref()` do dbt, quality gates e correlação entre DagRuns e `ingestion_run_id`; essas tabelas não carregam uniformemente os metadados técnicos por linha.
+- **Identificador de correlação**: `ingestion_run_id` é um identificador determinístico e seguro, como `e2e_<timestamp>`, persistido em `bronze.ingestion_runs` e `bronze.ingestion_manifest`.
+- **Detecção de Alteração (`NO_CHANGE`)**: a DAG controladora consulta o estado persistido da ingestão após a verificação de `data_carga_siconv`; se a fonte estiver inalterada, o pipeline encerra sem reconstruir as camadas analíticas.
 
 ---
 
@@ -87,7 +89,7 @@ A rastreabilidade dos dados é mantida pela correlação contínua de metadados 
 4. **Silver**: Tabelas Delta padronizadas e desacopladas (`siconv_proposta`, `siconv_programa_cadastral`, `siconv_programa_elegibilidade`, `siconv_programa_proposta`, `siconv_convenio`).
 5. **Gold Core**: Esquema dimensional em estrela com dimensões conformadas (`dim_data`, `dim_proponente`, `dim_municipio`, `dim_orgao`, `dim_programa`), tabelas fato canônicas (`fct_proposta`, `fct_convenio`), tabela fato observacional de saldos (`fct_convenio_saldo_observacao`) e tabela ponte N:N (`bridge_programa_proposta`).
 6. **Semantic View**: View dbt (`vw_superset_proposta_convenio`) preservando propostas sem convênio via LEFT JOIN e blindando regras de aditividade.
-7. **Serving Mart**: Tabela física Delta (`mart_superset_proposta_convenio`) materializada para alta performance e zero concorrência no BI.
+7. **Serving Mart**: Tabela física Delta (`mart_superset_proposta_convenio`) materializada para reduzir o custo de joins em tempo de consulta e mitigar concorrência no BI.
 
 ---
 
