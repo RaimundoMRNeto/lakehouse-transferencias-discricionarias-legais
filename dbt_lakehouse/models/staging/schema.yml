@@ -1,0 +1,34 @@
+version: 2
+
+models:
+  - name: stg_siconv_proposta
+    description: >
+      Modelo de staging para as propostas de trabalho apresentadas no Transferegov.
+      Origem: source('bronze', 'siconv_proposta').
+      Materialização: ephemeral (não persiste dados físicos; opera como expressão inline/CTE nos modelos downstream).
+      Grão: Preserva o grão de 1 linha por proposta de trabalho (id_proposta).
+      Papel na tipagem e normalização: Realiza a tipagem estrita de tipos numéricos (try_cast), normaliza strings (clean_string), converte datas brasileiras (parse_date_br) e valores monetários para DECIMAL(17,2) (parse_decimal_br), preservando os metadados técnicos de rastreabilidade.
+
+  - name: stg_siconv_programa
+    description: >
+      Modelo de staging para os dados de programas e critérios de elegibilidade do Transferegov.
+      Origem: source('bronze', 'siconv_programa').
+      Materialização: ephemeral (não persiste dados físicos; opera como expressão inline/CTE nos modelos downstream).
+      Grão: Preserva o grão da fonte de 1 linha por combinação de Programa × Modalidade × Natureza Jurídica × UF × Ação Orçamentária.
+      Papel na tipagem e normalização: Gera a surrogate key determinística SHA-256 (id_programa_elegibilidade) para o grão de elegibilidade, converte id_programa para bigint, formata atributos textuais e datas de vigência/emenda, propagando metadados técnicos de proveniência.
+
+  - name: stg_siconv_programa_proposta
+    description: >
+      Modelo de staging para os vínculos associativos N:N entre programas governamentais e propostas.
+      Origem: source('bronze', 'siconv_programa_proposta').
+      Materialização: ephemeral (não persiste dados físicos; opera como expressão inline/CTE nos modelos downstream).
+      Grão: Preserva o grão de 1 linha por par associativo (id_programa, id_proposta).
+      Papel na tipagem e normalização: Tipagem direta de chaves numéricas (try_cast para bigint) e repasse integral dos metadados técnicos de linhagem da ingestão.
+
+  - name: stg_siconv_convenio
+    description: >
+      Modelo de staging para os instrumentos jurídicos e convênios celebrados no Transferegov.
+      Origem: source('bronze', 'siconv_convenio').
+      Materialização: ephemeral (não persiste dados físicos; opera como expressão inline/CTE nos modelos downstream).
+      Grão: Preserva o grão físico da fonte de 1 linha por observação do instrumento no snapshot oficial.
+      Papel na tipagem e normalização: Computa a chave técnica SHA-256 (id_convenio_observacao) sobre o conjunto completo de colunas oficiais, converte valores financeiros para DECIMAL(17,2), converte datas e booleanos operacionais, calcula flags de detecção de observações concorrentes (source_conflict_count, has_source_conflict) e preserva metadados de auditoria.
