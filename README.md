@@ -46,12 +46,13 @@ Transferegov (Dados Abertos)
 Os dados são organizados no MinIO sob o prefixo `s3a://`:
 
 - **`s3a://bronze/`**:
-  - `siconv_programa/`: dados brutos particionados em formato Delta.
-  - `siconv_programa_proposta/`: dados brutos particionados em formato Delta.
-  - `siconv_proposta/`: dados brutos de propostas em formato Delta.
-  - `siconv_convenio/`: dados brutos de convênios em formato Delta.
-  - `ingestion_runs/`: tabela Delta de auditoria registrando cada execução (`run_id`, `data_carga`, `status`, `row_counts`, `metricas`).
-  - `raw/`: retenção compactada e versionada dos CSVs originais baixados do portal oficial.
+  - `warehouse/siconv_programa/`: tabela Delta Bronze do dataset de programas.
+  - `warehouse/siconv_programa_proposta/`: tabela Delta Bronze da associação programa-proposta.
+  - `warehouse/siconv_proposta/`: tabela Delta Bronze de propostas.
+  - `warehouse/siconv_convenio/`: tabela Delta Bronze de convênios.
+  - `warehouse/ingestion_runs/`: tabela Delta de auditoria de execuções, indexada por `ingestion_run_id`.
+  - `warehouse/ingestion_manifest/`: manifesto Delta com proveniência, SHA-256, arquivo RAW, contagens e versão Delta por dataset.
+  - `raw/transferegov/<dataset>/`: versões dos arquivos ZIP originais baixados da fonte oficial, identificadas por SHA-256 e submetidas à política de retenção.
 - **`s3a://silver/`**:
   - `warehouse/`: tabelas Delta limpas, tipadas, padronizadas e deduplicadas (`siconv_convenio`, `siconv_programa_cadastral`, `siconv_programa_elegibilidade`, `siconv_programa_proposta`, `siconv_proposta`).
 - **`s3a://gold/`**:
@@ -108,12 +109,13 @@ r6_pipeline_transferegov_e2e (Master Controller)
 
 ### Rastreabilidade via `ingestion_run_id`
 
-O Master Controller gera um identificador seguro único para cada execução (`run_id`):
-- Exemplo: `r6b_full_2`
-  - Ingestão Bronze disparada com ID de execução: `r6b_bronze__<timestamp>`
-  - Auditoria em `bronze.ingestion_runs` indexada por esse `run_id`.
-  - Transformações disparadas com ID de execução: `r6b_transform__<timestamp>`
-- Todo o histórico de execução fica correlacionado entre logs do Airflow, tabelas de auditoria do Spark e histórico Delta Lake.
+O Master Controller correlaciona três identificadores complementares:
+- **DagRun pai E2E**: por exemplo, `r6b_full_2`.
+- **DagRun filho R2**: `r6b_bronze__<timestamp>`.
+- **`ingestion_run_id` persistente**: `e2e_<timestamp>`, usado como chave em `bronze.ingestion_runs` e no manifesto Bronze.
+- **DagRun filho R6-A**: `r6b_transform__<timestamp>`.
+
+Essa cadeia permite relacionar logs do Airflow, auditoria Bronze, manifestos, tabelas Delta e transformações downstream sem depender de arquivos temporários.
 
 ---
 
